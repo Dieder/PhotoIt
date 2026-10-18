@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+  </Folder>
   <Project Path="AiFoundryLocal/AiFoundryLocal.csproj" />
   <Project Path="ClassLibrary.Patterns/CleanCode.Patterns.csproj" />
   <Project Path="CleanCode.AiOrgestation/PhotoIt.AiOrchestration.csproj" />
