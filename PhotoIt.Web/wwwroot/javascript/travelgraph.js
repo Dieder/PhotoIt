@@ -67,6 +67,31 @@
             var from = leg.from;
             var to = leg.to;
 
+            if (leg.isEditing) {
+                [from, to].forEach(function (point) {
+                    if (!point || point.latitude == null || point.longitude == null) {
+                        return;
+                    }
+
+                    var pointLatLng = [point.latitude, point.longitude];
+                    bounds.extend(pointLatLng);
+
+                    var editMarker = L.marker(pointLatLng, {
+                        icon: L.divIcon({
+                            html: "🏠",
+                            className: "route-edit-marker",
+                            iconSize: [32, 32],
+                            iconAnchor: [16, 28]
+                        }),
+                        zIndexOffset: 1000
+                    })
+                        .addTo(self.map)
+                        .bindPopup("<strong>" + (point.place || point.foundName || "Selected place") + "</strong>");
+
+                    self.markers.push(editMarker);
+                });
+            }
+
             if (!from || !to) {
                 return;
             }

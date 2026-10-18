@@ -46,7 +46,7 @@
                             <div>
 
                                 <button class="btn btn-sm btn-outline-secondary me-1"
-                                        @onclick="() => leg.item.IsEditing = true">
+                                        @onclick="() => SetLegEditingAsync(leg.item, true)">
                                     ✏️
                                 </button>
 
@@ -110,7 +110,7 @@
                         <div class="d-flex justify-content-between">
 
                             <button class="btn btn-success btn-sm"
-                                    @onclick="() => leg.item.IsEditing = false">
+                                    @onclick="() => SetLegEditingAsync(leg.item, false)">
                                 ✅
                             </button>
 
@@ -190,14 +190,12 @@
     {
         if (firstRender)
         {
-
-            await JS.InvokeVoidAsync(
-                "travelMap.initialize",
-                Model.Legs);
+            await JS.InvokeVoidAsync("travelMap.initialize");
+            await RefreshMapDisplayAsync();
         }
     }
 
-    private void AddLeg()
+    private async Task AddLeg()
     {
         var lastLeg = Model.Legs.Last();
         lastLeg.IsEditing = false;
@@ -217,10 +215,10 @@
             To = new RoutePoint(),
             Transport = TransportType.Car
         });
-        StateHasChanged();
+        await RefreshMapDisplayAsync();
     }
 
-    private void RemoveLeg(int index)
+    private async Task RemoveLeg(int index)
     {
         if (index==0)
         {
@@ -228,7 +226,18 @@
         }
         Model.Legs.RemoveAt(index);
         Model.Legs.Skip(index - 1).First().IsEditing = true;
-        StateHasChanged();
+        await RefreshMapDisplayAsync();
+    }
+
+    private async Task SetLegEditingAsync(RouteLeg leg, bool isEditing)
+    {
+        leg.IsEditing = isEditing;
+        await RefreshMapDisplayAsync();
+    }
+
+    private Task RefreshMapDisplayAsync()
+    {
+        return JS.InvokeVoidAsync("travelMap.refresh", Model).AsTask();
     }
 
     private async Task RefreshMap()
@@ -287,6 +296,7 @@
         if (point.Place == null || point.Place.Length < 3)
         {
             point.ResetGeo();
+            await RefreshMapDisplayAsync();
             return;
         }
         ;
@@ -308,6 +318,7 @@
 
         }
 
+        await RefreshMapDisplayAsync();
         StateHasChanged();
     }
 
