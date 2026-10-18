@@ -18,7 +18,7 @@
     align-items: flex-start;
     overflow-x: scroll;
     overflow-y: hidden;
-    padding: 4px 4px 12px;
+    padding: 8px 8px 14px;
     scrollbar-gutter: stable;
     overscroll-behavior-x: contain;
     touch-action: pan-x;
@@ -60,11 +60,22 @@
 }
 
 .template-card.selected {
-    border: 2px solid #0d6efd;
-    outline: 2px solid #0d6efd;
-    border: 2px purple solid;
-    outline-offset: 1px;
-    box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.18);
+    border: 4px solid var(--primary, #0d6efd);
+    box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--primary, #0d6efd);
+}
+
+.template-active-badge {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    z-index: 1;
+    padding: 3px 6px;
+    border-radius: 4px;
+    background: var(--primary, #0d6efd);
+    color: #fff;
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
 }
 
 .template-card.locked {

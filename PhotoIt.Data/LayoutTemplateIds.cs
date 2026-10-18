@@ -25,7 +25,8 @@ namespace PhotoIt.Data
     public static class LayoutTemplates
     {
 
-        public static LayoutTemplate? Get(string id) => All.FirstOrDefault(t => t.Id == id);
+        public static LayoutTemplate? Get(string id) =>
+            All.FirstOrDefault(template => string.Equals(template.Id, id, StringComparison.OrdinalIgnoreCase));
 
         public static IEnumerable<PhotoSlot> MigratePhotos(string id, IEnumerable<PhotoSlot> photos)
         {

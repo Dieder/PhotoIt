@@ -104,11 +104,7 @@
     position: relative;
 }
 
-.title-page-cover img {
-    width: 100%;
-    height: auto;
-    object-fit: cover;
-    display: block;
+.title-page-cover .slot-photo img.photo-img {
     background: #f8f9fa;
 }
 

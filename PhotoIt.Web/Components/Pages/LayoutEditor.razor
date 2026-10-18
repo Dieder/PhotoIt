@@ -307,7 +307,7 @@ else
     {
         if (selectedPage is null
             || selectedPage.Photos.Any(slot => !string.IsNullOrWhiteSpace(slot.PhotoId))
-            || templateId == selectedPage.TemplateId)
+            || string.Equals(templateId, selectedPage.TemplateId, StringComparison.OrdinalIgnoreCase))
             return;
 
         selectedPage.TemplateId = templateId;

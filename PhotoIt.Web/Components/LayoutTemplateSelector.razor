@@ -29,7 +29,7 @@
                         @((MarkupString)svg)
                         @if (isSelected)
                         {
-                            <span class="template-active-badge">Active layout</span>
+                             <span class="template-active-badge">ACTIVE</span>
                         }
                     </div>
                     <div class="template-name">@template.Name</div>
@@ -70,7 +70,8 @@
 
     private async Task SelectTemplate(string id, bool isLocked = false)
     {
-        if (isLocked || string.IsNullOrWhiteSpace(id) || id == SelectedTemplateId)
+        if (isLocked || string.IsNullOrWhiteSpace(id)
+            || string.Equals(id, SelectedTemplateId, StringComparison.OrdinalIgnoreCase))
             return;
 
         SelectedTemplateId = id;
@@ -81,7 +82,8 @@
     private async Task OnKeyPress(KeyboardEventArgs e, string id)
     {
         if (e.Key == "Enter" || e.Key == " ")
-            await SelectTemplate(id, PageHasPhotos && id != SelectedTemplateId);
+            await SelectTemplate(id, PageHasPhotos
+                && !string.Equals(id, SelectedTemplateId, StringComparison.OrdinalIgnoreCase));
     }
 
     private (double X, double Y, double Width, double Height) GetRectForSize(string size)

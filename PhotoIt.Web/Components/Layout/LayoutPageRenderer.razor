@@ -23,7 +23,14 @@
                     <div class="slot-photo @(Editable ? "draggable" : "")"
                          draggable="@Editable"
                          @ondragstart="() => HandleSlotDragStart(0, 0, CoverPhotoId!)">
-                        <img src="@GetPhotoUrl(CoverPhotoId!)" alt="Cover photo" />
+                         <img src="@GetPhotoUrl(CoverPhotoId!)"
+                              alt="Cover photo"
+                              class="photo-img"
+                              data-user-zoom="1"
+                              data-position-x="50"
+                              data-position-y="50"
+                              data-offset-x="0"
+                              data-offset-y="0" />
                         @if (Editable)
                         {
                             <button type="button" class="slot-remove btn btn-sm btn-dark" @onclick="HandleCoverRemove" @onclick:stopPropagation="true">×</button>
