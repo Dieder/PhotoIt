@@ -475,6 +475,8 @@ else
 
     private static void ResetSlotComposition(PhotoSlot slot)
     {
+        slot.OffsetX = 0d;
+        slot.OffsetY = 0d;
         slot.PositionX = 50d;
         slot.PositionY = 50d;
         slot.Zoom = 1d;
@@ -483,6 +485,8 @@ else
     private static void SwapSlotContents(PhotoSlot sourceSlot, PhotoSlot targetSlot)
     {
         (sourceSlot.PhotoId, targetSlot.PhotoId) = (targetSlot.PhotoId, sourceSlot.PhotoId);
+        (sourceSlot.OffsetX, targetSlot.OffsetX) = (targetSlot.OffsetX, sourceSlot.OffsetX);
+        (sourceSlot.OffsetY, targetSlot.OffsetY) = (targetSlot.OffsetY, sourceSlot.OffsetY);
         (sourceSlot.PositionX, targetSlot.PositionX) = (targetSlot.PositionX, sourceSlot.PositionX);
         (sourceSlot.PositionY, targetSlot.PositionY) = (targetSlot.PositionY, sourceSlot.PositionY);
         (sourceSlot.Zoom, targetSlot.Zoom) = (targetSlot.Zoom, sourceSlot.Zoom);

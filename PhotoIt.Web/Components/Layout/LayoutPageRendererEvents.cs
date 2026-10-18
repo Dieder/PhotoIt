@@ -8,4 +8,4 @@ public sealed record LayoutRemoveEventArgs(int slotCol, int slotRow, bool IsTitl
 
 public sealed record LayoutZoomChangedEventArgs(int slotCol, int slotRow, bool IsTitlePage, double Zoom);
 
-public sealed record LayoutPositionChangedEventArgs(int slotCol, int slotRow, bool IsTitlePage, double PositionX, double PositionY);
+public sealed record LayoutPositionChangedEventArgs(int slotCol, int slotRow, bool IsTitlePage, double OffsetX, double OffsetY);

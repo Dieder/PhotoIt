@@ -40,6 +40,8 @@ namespace PhotoIt.Data
                     return templateSlot;
 
                 var migratedSlot = templateSlot with { PhotoId = existingSlot.PhotoId };
+                migratedSlot.OffsetX = NormalizeOffset(existingSlot.OffsetX);
+                migratedSlot.OffsetY = NormalizeOffset(existingSlot.OffsetY);
                 migratedSlot.PositionX = NormalizePosition(existingSlot.PositionX);
                 migratedSlot.PositionY = NormalizePosition(existingSlot.PositionY);
                 migratedSlot.Zoom = NormalizeZoom(existingSlot.Zoom);
@@ -50,8 +52,11 @@ namespace PhotoIt.Data
         private static double NormalizePosition(double value) =>
             double.IsFinite(value) ? Math.Clamp(value, 0d, 100d) : 50d;
 
+        private static double? NormalizeOffset(double? value) =>
+            value is { } offset && double.IsFinite(offset) ? offset : null;
+
         private static double NormalizeZoom(double value) =>
-            double.IsFinite(value) ? Math.Clamp(value, 0.5d, 3d) : 1d;
+            double.IsFinite(value) ? Math.Clamp(value, 1d, 3d) : 1d;
 
         public static IReadOnlyList<LayoutTemplate> All { get; } =
         [
@@ -110,7 +115,7 @@ namespace PhotoIt.Data
         // +------------+--------------+ 10+0+20        
        
         new(LayoutTemplateIds.TravelStyle, "Travel Style",
-            columns: 2, rows: 3,
+            columns: 2, rows: 2,
             [
                 new(1, 1, PhotoType.Banner, ColSpan: 2),      // full-width banner
                 new(1, 2, PhotoType.Square),
@@ -143,7 +148,7 @@ namespace PhotoIt.Data
 
         // Banner above 2 landscape photos
         new(LayoutTemplateIds.BannerLandscape2, "Banner + Landscape ×2",
-            columns: 2, rows: 3,
+            columns: 2, rows: 2,
             [
                 new(1, 1, PhotoType.Banner, ColSpan: 2),
                 new(1, 2, PhotoType.Landscape),

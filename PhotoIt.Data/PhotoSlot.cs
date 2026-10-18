@@ -10,6 +10,8 @@
     )
     {
         public string? PhotoId { get; set; } = PhotoId;
+        public double? OffsetX { get; set; }
+        public double? OffsetY { get; set; }
         public double PositionX { get; set; } = 50d;
         public double PositionY { get; set; } = 50d;
         public double Zoom { get; set; } = 1d;

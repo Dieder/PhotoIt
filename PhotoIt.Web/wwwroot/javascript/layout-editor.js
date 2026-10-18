@@ -1,5 +1,6 @@
 const photoFitObservers = new WeakMap();
 const COVER_USER_ZOOM = 1;
+const LAYOUT_GAP_CM = 0.2;
 
 window.layoutEditor = {
     getElementSizeAtPoint: function (x, y) {
@@ -7,6 +8,17 @@ window.layoutEditor = {
         const slot = element?.closest(".slot-photo") ?? element;
         const rect = slot.getBoundingClientRect();
         return { width: rect.width, height: rect.height };
+    },
+    getPhotoPositionAtPoint: function (x, y) {
+        const element = document.elementFromPoint(x, y);
+        const slot = element?.closest(".slot-photo");
+        const image = slot?.querySelector("img.photo-img");
+        return {
+            offsetX: Number.parseFloat(image?.dataset.renderedOffsetX) || 0,
+            offsetY: Number.parseFloat(image?.dataset.renderedOffsetY) || 0,
+            maxOffsetX: Number.parseFloat(image?.dataset.maxOffsetX) || 0,
+            maxOffsetY: Number.parseFloat(image?.dataset.maxOffsetY) || 0
+        };
     },
     setPointerCaptureAtPoint: function (x, y, pointerId) {
         const element = document.elementFromPoint(x, y);
@@ -27,6 +39,40 @@ window.layoutEditor = {
         const observedImages = new Map();
         const observedSlots = new Set();
 
+        const fitLayoutGrid = grid => {
+            const columnSizes = grid.dataset.columnCm?.split(",").map(Number.parseFloat) ?? [];
+            const rowSizes = grid.dataset.rowCm?.split(",").map(Number.parseFloat) ?? [];
+            if (!columnSizes.length || !rowSizes.length || [...columnSizes, ...rowSizes].some(size => !Number.isFinite(size) || size < 0))
+                return;
+
+            const style = getComputedStyle(grid);
+            const availableWidth = grid.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight);
+            const availableHeight = grid.clientHeight - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom);
+            if (availableWidth <= 0 || availableHeight <= 0)
+                return;
+
+            const requiredWidthCm = columnSizes.reduce((total, size) => total + size, 0) + LAYOUT_GAP_CM * (columnSizes.length - 1);
+            const requiredHeightCm = rowSizes.reduce((total, size) => total + size, 0) + LAYOUT_GAP_CM * (rowSizes.length - 1);
+            const scale = Math.min(availableWidth / requiredWidthCm, availableHeight / requiredHeightCm);
+            if (!Number.isFinite(scale) || scale <= 0)
+                return;
+
+            grid.style.gridTemplateColumns = columnSizes.map(size => `${size * scale}px`).join(" ");
+            grid.style.gridTemplateRows = rowSizes.map(size => `${size * scale}px`).join(" ");
+            grid.style.columnGap = `${LAYOUT_GAP_CM * scale}px`;
+            grid.style.rowGap = `${LAYOUT_GAP_CM * scale}px`;
+
+            grid.querySelectorAll(".slot-frame[data-slot-width-cm][data-slot-height-cm]").forEach(frame => {
+                const widthCm = Number.parseFloat(frame.dataset.slotWidthCm);
+                const heightCm = Number.parseFloat(frame.dataset.slotHeightCm);
+                if (!Number.isFinite(widthCm) || !Number.isFinite(heightCm))
+                    return;
+
+                frame.style.width = `${widthCm * scale}px`;
+                frame.style.height = `${heightCm * scale}px`;
+            });
+        };
+
         const fitImage = image => {
             const slot = image.closest(".slot-photo");
             if (!slot || image.naturalWidth <= 0 || image.naturalHeight <= 0)
@@ -46,30 +92,39 @@ window.layoutEditor = {
                 ? Math.max(COVER_USER_ZOOM, parsedUserZoom)
                 : COVER_USER_ZOOM;
             const scale = coverScale * userZoom;
-            const renderedWidth = Math.ceil(photoWidth * scale);
-            const renderedHeight = Math.ceil(photoHeight * scale);
-            const extraX = Math.max(0, renderedWidth - slotRect.width);
-            const extraY = Math.max(0, renderedHeight - slotRect.height);
+            const renderedWidth = photoWidth * scale;
+            const renderedHeight = photoHeight * scale;
+            const maxOffsetX = Math.max(0, (renderedWidth - slotRect.width) / 2);
+            const maxOffsetY = Math.max(0, (renderedHeight - slotRect.height) / 2);
             const parsedPositionX = Number.parseFloat(image.dataset.positionX);
             const parsedPositionY = Number.parseFloat(image.dataset.positionY);
             const positionX = Number.isFinite(parsedPositionX) ? parsedPositionX : 50;
             const positionY = Number.isFinite(parsedPositionY) ? parsedPositionY : 50;
-            const left = extraX === 0 ? (slotRect.width - renderedWidth) / 2 : -extraX * (positionX / 100);
-            const top = extraY === 0 ? (slotRect.height - renderedHeight) / 2 : -extraY * (positionY / 100);
+            const storedOffsetX = Number.parseFloat(image.dataset.offsetX);
+            const storedOffsetY = Number.parseFloat(image.dataset.offsetY);
+            const requestedOffsetX = Number.isFinite(storedOffsetX) ? storedOffsetX : ((50 - positionX) / 50) * maxOffsetX;
+            const requestedOffsetY = Number.isFinite(storedOffsetY) ? storedOffsetY : ((50 - positionY) / 50) * maxOffsetY;
+            const offsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, requestedOffsetX));
+            const offsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, requestedOffsetY));
 
             image.style.position = "absolute";
             image.style.maxWidth = "none";
             image.style.maxHeight = "none";
-            image.style.width = `${renderedWidth}px`;
-            image.style.height = `${renderedHeight}px`;
-            image.style.left = `${left}px`;
-            image.style.top = `${top}px`;
+            image.style.width = `${photoWidth}px`;
+            image.style.height = `${photoHeight}px`;
+            image.style.left = "50%";
+            image.style.top = "50%";
             image.style.right = "auto";
             image.style.bottom = "auto";
-            image.style.objectFit = "fill";
-            image.style.transform = "none";
-            image.dataset.cropX = String(extraX);
-            image.dataset.cropY = String(extraY);
+            image.style.marginLeft = `${-photoWidth / 2}px`;
+            image.style.marginTop = `${-photoHeight / 2}px`;
+            image.style.objectFit = "cover";
+            image.style.transformOrigin = "center center";
+            image.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+            image.dataset.renderedOffsetX = String(offsetX);
+            image.dataset.renderedOffsetY = String(offsetY);
+            image.dataset.maxOffsetX = String(maxOffsetX);
+            image.dataset.maxOffsetY = String(maxOffsetY);
             image.dataset.coverScale = String(coverScale);
         };
 
@@ -111,14 +166,29 @@ window.layoutEditor = {
         };
 
         const resizeObserver = new ResizeObserver(entries => {
-            for (const entry of entries)
+            for (const entry of entries) {
+                if (entry.target.matches?.(".layout-page-renderer:not(.title-page)"))
+                    fitLayoutGrid(entry.target);
                 entry.target.querySelectorAll("img.photo-img").forEach(fitImage);
+            }
         });
+
+        const layoutGrid = root.matches?.(".layout-page-renderer:not(.title-page)")
+            ? root
+            : root.querySelector(".layout-page-renderer:not(.title-page)");
+        if (layoutGrid) {
+            fitLayoutGrid(layoutGrid);
+            resizeObserver.observe(layoutGrid);
+        }
 
         const mutationObserver = new MutationObserver(records => {
             for (const record of records) {
-                if (record.type === "attributes")
-                    fitImage(record.target);
+                if (record.type === "attributes") {
+                    if (record.target.matches?.(".layout-page-renderer:not(.title-page)"))
+                        fitLayoutGrid(record.target);
+                    else
+                        fitImage(record.target);
+                }
                 else {
                     record.addedNodes.forEach(scan);
                     record.removedNodes.forEach(node => {
@@ -135,7 +205,7 @@ window.layoutEditor = {
             subtree: true,
             childList: true,
             attributes: true,
-            attributeFilter: ["data-user-zoom", "data-position-x", "data-position-y", "src"]
+            attributeFilter: ["data-user-zoom", "data-position-x", "data-position-y", "data-offset-x", "data-offset-y", "data-column-cm", "data-row-cm", "src"]
         });
 
         photoFitObservers.set(root, { observedImages, observedSlots, mutationObserver, resizeObserver, scan });

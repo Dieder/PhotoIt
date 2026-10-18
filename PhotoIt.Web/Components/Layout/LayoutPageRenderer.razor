@@ -40,7 +40,9 @@
     else
     {
         <div class="layout-page-renderer @(PresentationMode ? "presentation-mode" : "")"
-            style="--cols: @Template.Columns; --rows: @Template.Rows; --page-ratio: @PageAspectRatio; --paper-ratio: @PaperAspectRatio;">
+            style="--cols: @Template.Columns; --rows: @Template.Rows; --page-ratio: @PageAspectRatio; --paper-ratio: @PaperAspectRatio;"
+            data-column-cm="@GetGridTrackSizesCm(true)"
+            data-row-cm="@GetGridTrackSizesCm(false)">
             @foreach (var slot in Template.Slots.OrderBy(s => s.Row).ThenBy(s => s.Col))
             {
                 var placedSlot = Photos.FirstOrDefault(item => item.Col == slot.Col && item.Row == slot.Row);
@@ -54,7 +56,8 @@
                      @ondrop:preventDefault
                      @ondragover:preventDefault>
                     <div class="slot-frame size-@slot.Type.Id @(IsFullPageSlot(slot) ? "full-page-slot" : "")"
-                         >
+                         data-slot-width-cm="@GetPositionValue(slot.Type.WidthCm)"
+                         data-slot-height-cm="@GetPositionValue(slot.Type.HeightCm)">
 
                     @if (!string.IsNullOrWhiteSpace(photoId) && IsPhotoCompatible(slot, photoId))
                     {
@@ -70,7 +73,9 @@
                                    class="photo-img"
                                    data-user-zoom="@GetZoomValue(placedSlot)"
                                    data-position-x="@GetPositionValue(placedSlot?.PositionX ?? 50d)"
-                                   data-position-y="@GetPositionValue(placedSlot?.PositionY ?? 50d)" />
+                                    data-position-y="@GetPositionValue(placedSlot?.PositionY ?? 50d)"
+                                    data-offset-x="@GetOffsetValue(placedSlot?.OffsetX)"
+                                    data-offset-y="@GetOffsetValue(placedSlot?.OffsetY)" />
 
                              @if (Editable)
                              {
@@ -167,47 +172,43 @@
     public int? PageNumber { get; set; }
 
     private LayoutTemplate? Template => LayoutTemplates.Get(TemplateId);
-    private double PageAspectRatio => Template is { } template
-        ? GetPageAspectRatio(template)
-        : 1d;
+    private const double A4LandscapeAspectRatio = 1.4142d;
+    private double PageAspectRatio => A4LandscapeAspectRatio;
+    private double PaperAspectRatio => A4LandscapeAspectRatio;
 
-    private double PaperAspectRatio => TemplateId switch
+    private string GetGridTrackSizesCm(bool columns)
     {
-        LayoutTemplateIds.PaginaSquare => 1d,
-        LayoutTemplateIds.PaginaFull => 297d / 210d,
-        _ when PageAspectRatio > 1d => 297d / 210d,
-        _ => 210d / 297d
-    };
+        if (Template is not { } template)
+            return string.Empty;
 
-    private static double GetPageAspectRatio(LayoutTemplate template)
-    {
-        if (template.Slots.Count == template.Columns * template.Rows
-            && template.Slots.All(slot => slot.ColSpan == 1 && slot.RowSpan == 1)
-            && template.Slots.Select(slot => slot.Type.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 1)
+        var trackCount = columns ? template.Columns : template.Rows;
+        var trackSizes = new double[trackCount];
+        foreach (var slot in template.Slots)
         {
-            return template.Columns * template.Slots[0].Type.AspectRatio / template.Rows;
+            var start = (columns ? slot.Col : slot.Row) - 1;
+            var span = columns ? slot.ColSpan : slot.RowSpan;
+            var sizeCm = columns ? slot.Type.WidthCm : slot.Type.HeightCm;
+            if (start < 0 || span <= 0 || !double.IsFinite(sizeCm) || sizeCm <= 0)
+                continue;
+
+            var perTrackSize = sizeCm / span;
+            for (var index = start; index < Math.Min(trackCount, start + span); index++)
+                trackSizes[index] = Math.Max(trackSizes[index], perTrackSize);
         }
 
-        if (template.Slots.Count == 1
-            && template.Slots[0].ColSpan == template.Columns
-            && template.Slots[0].RowSpan == template.Rows)
-        {
-            return template.Slots[0].Type.AspectRatio;
-        }
-
-        return template.Columns / (double)template.Rows;
+        return string.Join(",", trackSizes.Select(GetPositionValue));
     }
 
     private static bool IsFullPageSlot(PhotoSlot slot) =>
         slot.ColSpan > 1 || slot.RowSpan > 1 || slot.Type.Id is "paginaL";
     private const double ZoomStep = 0.25d;
-    private const double MinZoom = 0.5d;
+    private const double MinZoom = 1d;
     private const double MaxZoom = 3d;
     private PhotoSlot? activePositionSlot;
     private double activePositionStartX;
     private double activePositionStartY;
-    private double activePositionWidth;
-    private double activePositionHeight;
+    private double activePositionMaxX;
+    private double activePositionMaxY;
     private double activePositionPointerX;
     private double activePositionPointerY;
     private ElementReference rendererRoot;
@@ -234,14 +235,17 @@
         if (!Editable || string.IsNullOrWhiteSpace(slot.PhotoId))
             return;
 
-        var size = await JS.InvokeAsync<SlotSize>("layoutEditor.getElementSizeAtPoint", args.ClientX, args.ClientY);
+        var position = await JS.InvokeAsync<PhotoPosition>("layoutEditor.getPhotoPositionAtPoint", args.ClientX, args.ClientY);
         activePositionSlot = slot;
-        activePositionStartX = slot.PositionX;
-        activePositionStartY = slot.PositionY;
-        activePositionWidth = Math.Max(1d, size.Width);
-        activePositionHeight = Math.Max(1d, size.Height);
+        slot.OffsetX = position.OffsetX;
+        slot.OffsetY = position.OffsetY;
+        activePositionStartX = position.OffsetX;
+        activePositionStartY = position.OffsetY;
+        activePositionMaxX = position.MaxOffsetX;
+        activePositionMaxY = position.MaxOffsetY;
         activePositionPointerX = args.ClientX;
         activePositionPointerY = args.ClientY;
+        await JS.InvokeVoidAsync("layoutEditor.setPointerCaptureAtPoint", args.ClientX, args.ClientY, args.PointerId);
     }
 
     private void HandlePhotoPositionMove(PointerEventArgs args)
@@ -249,16 +253,14 @@
         if (activePositionSlot is null || args.Buttons == 0)
             return;
 
-        activePositionSlot.PositionX = Clamp(activePositionStartX +
-            (args.ClientX - activePositionPointerX) / activePositionWidth * 100d);
-        activePositionSlot.PositionY = Clamp(activePositionStartY +
-            (args.ClientY - activePositionPointerY) / activePositionHeight * 100d);
+        activePositionSlot.OffsetX = ClampOffset(activePositionStartX + args.ClientX - activePositionPointerX, activePositionMaxX);
+        activePositionSlot.OffsetY = ClampOffset(activePositionStartY + args.ClientY - activePositionPointerY, activePositionMaxY);
         _ = OnPositionChanged.InvokeAsync(new LayoutPositionChangedEventArgs(
             activePositionSlot.Col,
             activePositionSlot.Row,
             IsTitlePage,
-            activePositionSlot.PositionX,
-            activePositionSlot.PositionY));
+            activePositionSlot.OffsetX.Value,
+            activePositionSlot.OffsetY.Value));
         StateHasChanged();
     }
 
@@ -267,9 +269,13 @@
         activePositionSlot = null;
     }
 
-    private static double Clamp(double value) => Math.Clamp(value, 0d, 100d);
+    private static double ClampOffset(double value, double maxOffset) =>
+        Math.Clamp(value, -maxOffset, maxOffset);
 
     private static string GetZoomValue(PhotoSlot? slot) => GetPositionValue(slot?.Zoom ?? 1d);
+
+    private static string? GetOffsetValue(double? value) =>
+        value is { } offset && double.IsFinite(offset) ? GetPositionValue(offset) : null;
 
     private static string GetPositionValue(double value) =>
         value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
@@ -301,7 +307,7 @@
         !PhotoLookup.TryGetValue(photoId, out var photo)
         || PhotoType.IsCompatible(slot.Type.Id, photo.PixelWidth, photo.PixelHeight);
 
-    private sealed record SlotSize(double Width, double Height);
+    private sealed record PhotoPosition(double OffsetX, double OffsetY, double MaxOffsetX, double MaxOffsetY);
 
     private Task HandleSlotDragStart(int slotCol, int slotRow, string photoId)
     {

@@ -301,6 +301,12 @@ public sealed class AlbumCatalog : IDisposable
 
             foreach (var slot in page.Photos)
             {
+                if (slot.OffsetX is { } offsetX && !double.IsFinite(offsetX))
+                    slot.OffsetX = null;
+
+                if (slot.OffsetY is { } offsetY && !double.IsFinite(offsetY))
+                    slot.OffsetY = null;
+
                 if (!double.IsFinite(slot.PositionX))
                     slot.PositionX = 50d;
                 else
@@ -314,7 +320,7 @@ public sealed class AlbumCatalog : IDisposable
                 if (!double.IsFinite(slot.Zoom))
                     slot.Zoom = 1d;
                 else
-                    slot.Zoom = Math.Clamp(slot.Zoom, 0.5d, 3d);
+                    slot.Zoom = Math.Clamp(slot.Zoom, 1d, 3d);
             }
         }
     }

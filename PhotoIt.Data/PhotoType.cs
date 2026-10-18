@@ -30,7 +30,7 @@ namespace PhotoIt.Data
 
         public static readonly PhotoType Portrait = new("portrait", "Portret", 10, 15, "10×15 cm");
         public static readonly PhotoType Landscape = new("landscape", "Landschap", 15, 10, "15×10 cm");
-        public static readonly PhotoType Square = new("square", "Vierkant", 10, 10, "20×20 cm");
+        public static readonly PhotoType Square = new("square", "Vierkant", 20, 20, "20×20 cm");
 
         public static readonly PhotoType SmallSquare = new("small-square", "Klein Vierkant", 5, 5, "5×5 cm");
         public static readonly PhotoType Panorama = new("panorama", "Panorama", 29.7, 14.9, "29.7×14.9 cm");
