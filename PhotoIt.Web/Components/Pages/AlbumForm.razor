@@ -86,11 +86,28 @@
         }
 
         if (IsNew)
-            Catalog.Create(Model);
-        else if (!Catalog.Update(Model))
         {
-            errorMessage = "The album could not be updated.";
-            return Task.CompletedTask;
+            Catalog.Create(Model);
+        }
+        else
+        {
+            var album = Catalog.Get(Model.Id);
+            if (album is null)
+            {
+                errorMessage = "The album could not be found.";
+                return Task.CompletedTask;
+            }
+
+            album.Name = Model.Name;
+            album.FullDescription = Model.FullDescription;
+            album.Intro = Model.Intro;
+            album.ImageFolderName = Model.ImageFolderName;
+
+            if (!Catalog.Update(album))
+            {
+                errorMessage = "The album could not be updated.";
+                return Task.CompletedTask;
+            }
         }
 
         Navigation.NavigateTo($"/albums/{Model.Id}");
