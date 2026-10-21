@@ -78,9 +78,24 @@ public sealed class Phi3VisionModel : IDisposable
 
     public async Task<VisionAnalysis> AnalyzeImageAsync(
         byte[] imageBytes,
-        string prompt = "Describe this image and return JSON with description and tags.",
+        string prompt = "",
         CancellationToken ct = default)
     {
+
+        string cprompt =
+            """
+                Analyze the image. Describe this image and return JSON with fields description and tags.
+
+                Return ONLY valid JSON matching this schema:
+
+                {
+                  "description": "string",
+                  "tags": ["string"],
+                  "confidence": 0.0
+                }
+                """;
+        if (string.IsNullOrEmpty(prompt))
+            prompt = cprompt;
         ArgumentNullException.ThrowIfNull(imageBytes);
         await LoadAsync(ct).ConfigureAwait(false);
         await _generationLock.WaitAsync(ct).ConfigureAwait(false);
