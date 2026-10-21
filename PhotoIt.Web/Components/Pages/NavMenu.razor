@@ -1,4 +1,8 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
+﻿
+@inject NavigationManager Navigation
+@if (display())
+{
+<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">CleanCode</a>
     </div>
@@ -22,3 +26,19 @@
        
     </nav>
 </div>
+}
+
+@code {
+    public bool display()
+    {
+        var path = Navigation.Uri;
+        // if path contains more than /albums then return false
+        if (path.Contains("/albums/") && !path.EndsWith("/albums"))
+        {
+            return false;
+        }
+        return true;
+    }
+
+}
+

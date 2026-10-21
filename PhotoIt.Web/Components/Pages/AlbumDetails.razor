@@ -11,87 +11,188 @@
 
 @if (album is null)
 {
-    <div class="alert alert-warning">Album not found.</div>
-    <a href="albums">Back to albums</a>
+    <div class="alert alert-warning">
+        Album not found.
+    </div>
+        
+    <BackToAlbum />
+    
 }
 else
 {
-    
-    <div class="d-flex justify-content-between align-items-start mb-4">
-        <div>
-            <a class="text-decoration-none" href="albums">&larr; Back to albums</a>
-            <p class="text-uppercase text-muted small mt-3 mb-1">@album.ImageFolderName</p>
-            <h1>@album.Name</h1>
-        </div>
-        <div class="d-flex gap-2 flex-wrap">
-            @if (canEdit)
-            {
-                <a class="toolbar-button" href="/albums/@album.Id/photos">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M4 5h16v14H4z" stroke-width="2" />
-                        <circle cx="9" cy="10" r="2" stroke-width="2" />
-                        <path d="M21 15l-5-5L5 21" stroke-width="2" />
-                    </svg>
-                    <span>Manage photos</span>
-                </a>
-                <a class="toolbar-button" href="/albums/@album.Id/layout/edit">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke-width="2" />
-                    </svg>
-                    <span>@(hasLayout ? "Edit layout" : "Create layout")</span>
-                </a>
-                <a class="toolbar-button" href="/albums/@album.Id/edit">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M12 20h9" stroke-width="2" />
-                        <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" stroke-width="2" />
-                    </svg>
-                    <span>Edit</span>
-                </a>
-                <a class="toolbar-button" href="/travelroute/@album.Id">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M12 21s7-5.5 7-11a7 7 0 10-14 0c0 5.5 7 11 7 11z" stroke-width="2" />
-                        <circle cx="12" cy="10" r="2.5" stroke-width="2" />
-                    </svg>
+    <div class="album-page-header">
 
-                    <span>Travel route</span></a>
-                <button class="toolbar-button danger" @onclick="DeleteAsync">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M3 6h18" stroke-width="2" />
-                        <path d="M8 6V4h8v2" stroke-width="2" />
-                        <path d="M19 6l-1 14H6L5 6" stroke-width="2" />
-                    </svg>
-                    <span>Delete</span>
-                </button>
-            }
-            @if (hasLayout)
-            {
-                <a class="toolbar-button" href="/albums/@album.Id/layout/view">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" stroke-width="2" />
-                        <circle cx="12" cy="12" r="3" stroke-width="2" />
-                    </svg>
-                    <span>View album</span>
-                </a>
-            }
+       
+        <a href="/Albums"
+           class="album-back-link">
+            <i class="bi bi-arrow-left" aria-hidden="true"></i>
+            <span>Back to albums</span>
+        </a>
+
+        <h1 class="album-page-title">
+            @album.Name
+        </h1>
+
+        <div class="album-page-subtitle">
+            Travel Album
         </div>
+
     </div>
 
-    <section class="mb-4">
-        <h2 class="h5">Image folder</h2>
-        <p><code>@album.ImageFolderName</code></p>
-    </section>
+    <div class="album-toolbar">
 
-    <section class="mb-4">
-        <h2 class="h5">Description</h2>
-        <p class="lead" style="white-space: pre-wrap">@album.FullDescription</p>
-    </section>
+        @if (hasLayout)
+        {
+            <a class="toolbar-button primary"
+               href="/albums/@album.Id/layout/view">
 
-    <dl class="row text-muted">
-        <dt class="col-sm-3">Created</dt>
-        <dd class="col-sm-9">@album.CreatedUtc.ToLocalTime().ToString("f")</dd>
-        <dt class="col-sm-3">Last updated</dt>
-        <dd class="col-sm-9">@album.UpdatedUtc.ToLocalTime().ToString("f")</dd>
-    </dl>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" stroke-width="2" />
+                    <circle cx="12" cy="12" r="3" stroke-width="2" />
+                </svg>
+
+                <span>View Album</span>
+            </a>
+        }
+
+        @if (canEdit)
+        {
+            <a class="toolbar-button"
+               href="/albums/@album.Id/photos">
+
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M4 5h16v14H4z" stroke-width="2" />
+                    <circle cx="9" cy="10" r="2" stroke-width="2" />
+                    <path d="M21 15l-5-5L5 21" stroke-width="2" />
+                </svg>
+
+                <span>Manage Photos</span>
+            </a>
+
+            <a class="toolbar-button"
+               href="/albums/@album.Id/layout/edit">
+
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"
+                          stroke-width="2" />
+                </svg>
+
+                <span>
+                    @(hasLayout ? "Edit Layout" : "Create Layout")
+                </span>
+            </a>
+
+            <a class="toolbar-button"
+               href="/albums/@album.Id/edit">
+
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M12 20h9" stroke-width="2" />
+                    <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"
+                          stroke-width="2" />
+                </svg>
+
+                <span>Edit Album</span>
+            </a>
+
+            <a class="toolbar-button"
+               href="/travelroute/@album.Id">
+
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M12 21s7-5.5 7-11a7 7 0 10-14 0c0 5.5 7 11 7 11z"
+                          stroke-width="2" />
+                    <circle cx="12"
+                            cy="10"
+                            r="2.5"
+                            stroke-width="2" />
+                </svg>
+
+                <span>Travel Route</span>
+            </a>
+
+            <button class="toolbar-button danger"
+                    type="button"
+                    @onclick="DeleteAsync">
+
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M3 6h18" stroke-width="2" />
+                    <path d="M8 6V4h8v2" stroke-width="2" />
+                    <path d="M19 6l-1 14H6L5 6" stroke-width="2" />
+                </svg>
+
+                <span>Delete</span>
+            </button>
+        }
+
+    </div>
+
+    
+    <div class="card album-card border-0 shadow-sm rounded-3 h-100">
+        <div class="card-body p-4">
+
+            <!-- Header -->
+            <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+                <div class="min-w-0">
+                    <h5 class="card-title fw-semibold mb-2">
+                        @album.Name
+                    </h5>
+
+                    <div class="album-folder-badge">
+                        <i class="bi bi-folder2 me-1"></i>
+                        @album.ImageFolderName
+                    </div>
+                </div>
+
+                <span class="badge rounded-pill @(hasLayout
+                                    ? "text-bg-success"
+                                    : "text-bg-secondary") flex-shrink-0">
+                    <i class="bi @(hasLayout
+                                        ? "bi-check-circle"
+                                        : "bi-layout-text-window-reverse") me-1"></i>
+                    @(hasLayout ? "Layout ready" : "No layout")
+                </span>
+            </div>
+
+            <!-- Description -->
+            @if (!string.IsNullOrWhiteSpace(album.FullDescription))
+            {
+                <p class="album-description text-secondary mb-4">
+                    @album.FullDescription
+                </p>
+            }
+
+            <hr class="album-divider" />
+
+            <!-- Metadata -->
+            <div class="row g-3 album-meta">
+
+                <div class="col-12 col-sm-6">
+                    <div class="meta-item">
+                        <div class="meta-label">
+                            <i class="bi bi-calendar-plus me-1"></i>
+                            Created
+                        </div>
+                        <div class="meta-value">
+                            @album.CreatedUtc.ToLocalTime().ToString("dd MMM yyyy, HH:mm")
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-sm-6">
+                    <div class="meta-item">
+                        <div class="meta-label">
+                            <i class="bi bi-clock-history me-1"></i>
+                            Last updated
+                        </div>
+                        <div class="meta-value">
+                            @album.UpdatedUtc.ToLocalTime().ToString("dd MMM yyyy, HH:mm")
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
 }
 
 @code {

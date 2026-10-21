@@ -49,3 +49,20 @@
         color: #dc3545;
         border-color: #dc3545;
     }
+
+.meta-value {
+    color: #343a40;
+    font-weight: 500;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .album-card {
+        transition: none;
+    }
+
+        .album-card:hover {
+            transform: none;
+        }
+}

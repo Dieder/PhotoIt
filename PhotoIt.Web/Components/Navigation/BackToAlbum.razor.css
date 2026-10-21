@@ -1,0 +1,40 @@
+﻿body {
+}
+.album-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    color: #6c757d;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+    .album-back-link:hover {
+        color: #0d6efd;
+        text-decoration: none;
+    }
+
+    .album-back-link:focus-visible {
+        outline: 2px solid #0d6efd;
+        outline-offset: 4px;
+        border-radius: 2px;
+    }
+
+    .album-back-link i {
+        font-size: 1.1rem;
+        transition: transform 0.2s ease;
+    }
+
+    .album-back-link:hover i {
+        transform: translateX(-3px);
+    }
+
+@media (prefers-reduced-motion: reduce) {
+    .album-back-link,
+    .album-back-link i {
+        transition: none;
+    }
+}

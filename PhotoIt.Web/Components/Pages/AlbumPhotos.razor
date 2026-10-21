@@ -13,13 +13,14 @@
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @using PhotoIt.Web.Components
+@using PhotoIt.Web.Components.Navigation
 
 <PageTitle>Photos - @(album?.Name ?? "Album")</PageTitle>
 
 @if (album is null)
 {
     <div class="alert alert-warning">Album not found.</div>
-    <a href="albums">Back to albums</a>
+    <BackToAlbum />    
 }
 else
 {

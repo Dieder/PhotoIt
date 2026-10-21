@@ -2,7 +2,7 @@
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
-<div @ref="rendererRoot" class="@(IsTitlePage ? "layout-page-renderer title-page" : "layout-paper")" style="--paper-ratio: @PageAspectRatio;">
+<div @ref="rendererRoot" class="@RendererClass" style="--paper-ratio: @PageAspectRatio; --page-background: @GetPageBackground();">
     @if (IsTitlePage)
     {
         <div class="title-page-content">
@@ -46,6 +46,10 @@
     }
     else
     {
+        @if (!string.IsNullOrWhiteSpace(CurrentAppearance.Title))
+        {
+            <h2 class="page-title" style="@GetPageTitleStyle()">@CurrentAppearance.Title</h2>
+        }
         <div class="layout-page-renderer @(PresentationMode ? "presentation-mode" : "")"
             style="--cols: @Template.Columns; --rows: @Template.Rows; --page-ratio: @PageAspectRatio; --paper-ratio: @PaperAspectRatio;"
             data-column-cm="@GetGridTrackSizesCm(true)"
@@ -155,6 +159,9 @@
     public string? CoverPhotoId { get; set; }
 
     [Parameter]
+    public PageAppearance? Appearance { get; set; } = new();
+
+    [Parameter]
     public bool Editable { get; set; }
 
     [Parameter]
@@ -220,6 +227,12 @@
     private double activePositionPointerY;
     private ElementReference rendererRoot;
     private bool photoFitInitialized;
+    private string? appliedAppearanceSignature;
+    private static readonly PageAppearance DefaultAppearance = new();
+    private PageAppearance CurrentAppearance => Appearance ?? DefaultAppearance;
+    private string RendererClass => IsTitlePage
+        ? "layout-page-renderer title-page"
+        : $"layout-paper regular-page{(string.IsNullOrWhiteSpace(CurrentAppearance.Title) ? string.Empty : " has-page-title")}";
 
     
 
@@ -227,6 +240,43 @@
     {
         return $"albums/{AlbumId}/photos/{photoId}/content";
     }
+
+    private string GetPageBackground()
+    {
+        var startColor = GetSafeColor(CurrentAppearance.BackgroundColor, "#FFFFFF");
+        return CurrentAppearance.BackgroundStyle == PageBackgroundStyle.Gradient
+            ? $"linear-gradient(to right, {startColor}, {GetSafeColor(CurrentAppearance.GradientEndColor, "#FFFFFF")})"
+            : startColor;
+    }
+
+    private string GetPageTitleStyle()
+    {
+        var fontFamily = PageAppearance.AvailableFonts.FirstOrDefault(font =>
+            string.Equals(font, CurrentAppearance.FontFamily, StringComparison.OrdinalIgnoreCase)) ?? "Roboto";
+        var alignment = CurrentAppearance.TitleAlignment switch
+        {
+            PageTitleAlignment.Left => "left",
+            PageTitleAlignment.Right => "right",
+            _ => "center",
+        };
+
+        return $"font-family: '{fontFamily}', sans-serif; color: {GetSafeColor(CurrentAppearance.TextColor, "#000000")}; font-size: {Math.Clamp(CurrentAppearance.FontSize, 12, 96)}px; text-align: {alignment};";
+    }
+
+    private static string GetSafeColor(string? color, string fallback) =>
+        color is { Length: 7 } && color[0] == '#' && color.AsSpan(1).ToArray().All(Uri.IsHexDigit)
+            ? color
+            : fallback;
+
+    private string GetAppearanceSignature() => string.Join('|',
+        CurrentAppearance.Title,
+        CurrentAppearance.FontFamily,
+        CurrentAppearance.TextColor,
+        CurrentAppearance.FontSize,
+        CurrentAppearance.TitleAlignment,
+        CurrentAppearance.BackgroundStyle,
+        CurrentAppearance.BackgroundColor,
+        CurrentAppearance.GradientEndColor);
 
     private string GetPhotoName(string photoId)
     {
@@ -289,11 +339,25 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (photoFitInitialized)
-            return;
+        if (!photoFitInitialized)
+        {
+            await JS.InvokeVoidAsync("layoutEditor.initializePhotoFit", rendererRoot);
+            photoFitInitialized = true;
+        }
 
-        await JS.InvokeVoidAsync("layoutEditor.initializePhotoFit", rendererRoot);
-        photoFitInitialized = true;
+        if (!IsTitlePage && appliedAppearanceSignature != GetAppearanceSignature())
+        {
+            await JS.InvokeVoidAsync(
+                "pageAppearance.apply",
+                rendererRoot,
+                CurrentAppearance.BackgroundStyle == PageBackgroundStyle.Gradient,
+                GetSafeColor(CurrentAppearance.BackgroundColor, "#FFFFFF"),
+                GetSafeColor(CurrentAppearance.GradientEndColor, "#FFFFFF"),
+                PageAppearance.AvailableFonts.FirstOrDefault(font =>
+                    string.Equals(font, CurrentAppearance.FontFamily, StringComparison.OrdinalIgnoreCase)) ?? "Roboto",
+                !string.IsNullOrWhiteSpace(CurrentAppearance.Title));
+            appliedAppearanceSignature = GetAppearanceSignature();
+        }
     }
 
     public async ValueTask DisposeAsync()

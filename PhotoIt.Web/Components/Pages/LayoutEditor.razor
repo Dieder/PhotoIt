@@ -146,10 +146,63 @@ else
                             <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeletePage(selectedPage.Number)">Delete page</button>
                         </div>
                     </div>
+                    <section class="page-appearance-editor card card-body mb-3" aria-labelledby="page-appearance-heading">
+                        <h2 id="page-appearance-heading" class="h6">Page appearance</h2>
+                        <div class="row g-2">
+                            <div class="col-12 col-md-6">
+                                <label class="form-label" for="page-title">Optional title</label>
+                                <input id="page-title" class="form-control" @bind="selectedPage.Appearance.Title" @bind:event="oninput" @bind:after="MarkPageAppearanceChanged" />
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label" for="page-title-font">Font</label>
+                                <select id="page-title-font" class="form-select" @bind="selectedPage.Appearance.FontFamily" @bind:after="MarkPageAppearanceChanged">
+                                    @foreach (var font in PageAppearance.AvailableFonts)
+                                    {
+                                        <option value="@font">@font</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <label class="form-label" for="page-title-color">Text color</label>
+                                <input id="page-title-color" class="form-control form-control-color w-100" type="color" @bind="selectedPage.Appearance.TextColor" @bind:after="MarkPageAppearanceChanged" />
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <label class="form-label" for="page-title-size">Text size (px)</label>
+                                <input id="page-title-size" class="form-control" type="number" min="12" max="96" @bind="selectedPage.Appearance.FontSize" @bind:after="MarkPageAppearanceChanged" />
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <label class="form-label" for="page-title-alignment">Title alignment</label>
+                                <select id="page-title-alignment" class="form-select" @bind="selectedPage.Appearance.TitleAlignment" @bind:after="MarkPageAppearanceChanged">
+                                    <option value="@PageTitleAlignment.Left">Left</option>
+                                    <option value="@PageTitleAlignment.Center">Center</option>
+                                    <option value="@PageTitleAlignment.Right">Right</option>
+                                </select>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <label class="form-label" for="page-background-style">Background</label>
+                                <select id="page-background-style" class="form-select" @bind="selectedPage.Appearance.BackgroundStyle" @bind:after="MarkPageAppearanceChanged">
+                                    <option value="@PageBackgroundStyle.Solid">Solid color</option>
+                                    <option value="@PageBackgroundStyle.Gradient">Two-color gradient</option>
+                                </select>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <label class="form-label" for="page-background-color">@(selectedPage.Appearance.BackgroundStyle == PageBackgroundStyle.Gradient ? "Gradient start" : "Background color")</label>
+                                <input id="page-background-color" class="form-control form-control-color w-100" type="color" @bind="selectedPage.Appearance.BackgroundColor" @bind:after="MarkPageAppearanceChanged" />
+                            </div>
+                            @if (selectedPage.Appearance.BackgroundStyle == PageBackgroundStyle.Gradient)
+                            {
+                                <div class="col-6 col-md-3">
+                                    <label class="form-label" for="page-background-end-color">Gradient end</label>
+                                    <input id="page-background-end-color" class="form-control form-control-color w-100" type="color" @bind="selectedPage.Appearance.GradientEndColor" @bind:after="MarkPageAppearanceChanged" />
+                                </div>
+                            }
+                        </div>
+                    </section>
                     <LayoutPageRenderer AlbumId="@album.Id"
                                         TemplateId="@selectedPage.TemplateId"
                                         PageNumber="@selectedPage.Number"
                                         Photos="@selectedPage.Photos"
+                                        Appearance="@selectedPage.Appearance"
                                         PhotoLookup="@photoLookup"
                                         Editable="true"
                                         OnPhotoDragStarted="HandleDragStarted"
@@ -205,6 +258,13 @@ else
 
     private sealed record PhotoDateGroup(DateTime Date, string Header, List<AlbumPhoto> Photos);
     private List<PhotoIt.Data.LayoutTemplate>? layoutTemplates;
+
+    private void MarkPageAppearanceChanged()
+    {
+        layoutSaved = false;
+        statusMessage = "Page appearance changed. Save the layout to persist it.";
+        errorMessage = null;
+    }
 
     protected override async Task OnInitializedAsync()
     {
