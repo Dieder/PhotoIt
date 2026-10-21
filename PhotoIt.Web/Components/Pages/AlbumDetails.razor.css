@@ -5,6 +5,13 @@
     flex-wrap: wrap;
 }
 
+.album-card {
+    border: 0.15rem solid blue !important;
+    background-color: aliceblue;
+    margin-top: 3rem;
+    border-radius: 1rem;
+}
+
 .toolbar-button {
     display: flex;
     flex-direction: column;
