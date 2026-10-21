@@ -1,0 +1,253 @@
+
+.album-form-page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 1.5rem 0 3rem;
+    color: #212529;
+}
+
+.album-form-heading {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+}
+
+.album-form-heading-icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 56px;
+    height: 56px;
+    border-radius: 14px;
+    color: #0d6efd;
+    background: #edf4ff;
+}
+
+    .album-form-heading-icon svg {
+        width: 30px;
+        height: 30px;
+    }
+
+.album-form-heading h1 {
+    margin: 0 0 0.35rem;
+    font-size: clamp(1.5rem, 3vw, 1.9rem);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+}
+
+.album-form-heading p {
+    margin: 0;
+    color: #6c757d;
+    font-size: 0.925rem;
+}
+
+.album-form-card {
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 16px;
+    box-shadow: 0 6px 24px rgba(33, 37, 41, 0.045);
+}
+
+.album-form-section {
+    padding: 2rem;
+}
+
+.album-section-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+}
+
+    .album-section-heading h2 {
+        margin: 0 0 0.4rem;
+        font-size: 1.1rem;
+        font-weight: 650;
+    }
+
+    .album-section-heading p {
+        margin: 0;
+        color: #6c757d;
+        font-size: 0.875rem;
+        line-height: 1.5;
+    }
+
+.album-section-number {
+    color: #adb5bd;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.album-section-divider {
+    height: 1px;
+    margin: 0 2rem;
+    background: #edf0f2;
+}
+
+.album-form-page .form-label {
+    display: block;
+    margin-bottom: 0.55rem;
+    color: #343a40;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.album-form-page .album-input {
+    min-height: 46px;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid #dce1e7;
+    border-radius: 9px;
+    background-color: #fff;
+    font-size: 0.925rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+    .album-form-page .album-input::placeholder {
+        color: #adb5bd;
+    }
+
+    .album-form-page .album-input:focus {
+        border-color: #86b7fe;
+        box-shadow: 0 0 0 0.22rem rgba(13, 110, 253, 0.12);
+    }
+
+.album-form-page .album-description-input {
+    min-height: 125px;
+    resize: vertical;
+    line-height: 1.65;
+}
+
+.album-form-page .form-text {
+    margin-top: 0.5rem;
+    color: #7a828a;
+    font-size: 0.8rem;
+}
+
+.album-form-page .validation-message {
+    display: block;
+    margin-top: 0.4rem;
+    color: #dc3545;
+    font-size: 0.825rem;
+}
+
+.album-editor-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.65rem;
+}
+
+.album-editor-hint {
+    color: #6c757d;
+    font-size: 0.75rem;
+}
+
+.album-markdown-editor {
+    overflow: hidden;
+    border: 1px solid #dce1e7;
+    border-radius: 10px;
+    background: #fff;
+}
+
+    /* Also style ordinary textareas inside the existing editor component. */
+    .album-markdown-editor textarea {
+        width: 100%;
+        min-height: 260px;
+        padding: 1rem;
+        border: 0;
+        outline: none;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 0.9rem;
+        line-height: 1.7;
+    }
+
+.album-editor-help {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+    color: #6c757d;
+    font-size: 0.8rem;
+    line-height: 1.6;
+}
+
+.album-form-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.25rem 2rem;
+    border-top: 1px solid #edf0f2;
+    background: #fafbfc;
+}
+
+    .album-form-footer .btn {
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: 42px;
+        padding: 0.65rem 1.1rem;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+.album-submit-button svg {
+    width: 17px;
+    height: 17px;
+}
+
+.album-cancel-button {
+    border: 1px solid #dce1e7;
+    background: #fff;
+    color: #495057;
+}
+
+    .album-cancel-button:hover {
+        border-color: #adb5bd;
+        background: #f8f9fa;
+    }
+
+@media (max-width: 576px) {
+    .album-form-page {
+        padding-top: 1rem;
+    }
+
+    .album-form-heading {
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .album-form-heading-icon {
+        flex-basis: 46px;
+        height: 46px;
+    }
+
+    .album-form-section {
+        padding: 1.25rem;
+    }
+
+    .album-section-divider {
+        margin: 0 1.25rem;
+    }
+
+    .album-form-footer {
+        padding: 1rem 1.25rem;
+    }
+
+        .album-form-footer .btn {
+            flex: 1;
+        }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .album-form-page .album-input {
+        transition: none;
+    }
+}
