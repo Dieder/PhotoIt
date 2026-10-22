@@ -155,8 +155,20 @@ else
             <!-- Description -->
             @if (!string.IsNullOrWhiteSpace(album.FullDescription))
             {
+               var layout = Catalog.GetLayout(album.Id);
+               var coverPhotoId = layout?.CoverPhotoId;
                 <p class="album-description text-secondary mb-4">
                     @album.FullDescription
+                </p>
+                <p>
+                     @if (!string.IsNullOrWhiteSpace(coverPhotoId))
+                            {
+                                <img class="card-img-top" src="albums/@album.Id/photos/@coverPhotoId/content" alt="Cover for @album.Name" style="max-width: 240px; max-height:240px; object-fit: cover;" />
+                            }
+                            else
+                            {
+                                <div class="d-flex align-items-center justify-content-center bg-light text-muted" style="height: 220px;">No cover photo</div>
+                            }
                 </p>
             }
 
