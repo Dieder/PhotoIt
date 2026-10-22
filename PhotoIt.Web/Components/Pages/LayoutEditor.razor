@@ -80,138 +80,276 @@ else
                 }
             </aside>
 
-            <main class="page-editor">
-                <div class="page-tabs d-flex flex-wrap align-items-center gap-2 mb-3">
-                    <button type="button"
-                            class="btn btn-sm @(selectedPageNumber == 0 ? "btn-primary" : "btn-outline-secondary")"
-                            @onclick="() => SelectPage(0)">
-                        Title page
-                    </button>
-                    @foreach (var albumPage in albumLayout.Pages.OrderBy(p => p.Number))
-                    {
-                        <button type="button"
-                                class="btn btn-sm @(selectedPageNumber == albumPage.Number ? "btn-primary" : "btn-outline-secondary")"
-                                @onclick="() => SelectPage(albumPage.Number)">
-                            Page @albumPage.Number
-                        </button>
-                    }
-                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddPage">+ Add page</button>
+            
+<main class="page-editor">
+
+    <div class="page-editor-toolbar">
+        <div class="page-tabs">
+            <button type="button"
+                    class="page-tab @(selectedPageNumber == 0 ? "active" : "")"
+                    @onclick="() => SelectPage(0)">
+                <span class="page-tab-icon">T</span>
+                Title page
+            </button>
+
+            @foreach (var albumPage in albumLayout.Pages.OrderBy(p => p.Number))
+            {
+                <button type="button"
+                        @key="albumPage.Number"
+                        class="page-tab @(selectedPageNumber == albumPage.Number ? "active" : "")"
+                        @onclick="() => SelectPage(albumPage.Number)">
+                    <span class="page-tab-icon">
+                        @albumPage.Number
+                    </span>
+                    <span>@(albumPage.Appearance?.Title ?? "")</span>
+                </button>
+            }
+
+            <button type="button"
+                    class="page-tab page-tab-add"
+                    @onclick="AddPage">
+                <span aria-hidden="true">+</span> Add page
+            </button>
+        </div>
+    </div>
+
+    @if (selectedPageNumber == 0)
+    {
+        <details class="editor-panel" open>
+            <summary class="editor-panel-summary">
+                <span class="editor-panel-icon">T</span>
+                <span class="editor-panel-heading">
+                    <strong>Title page content</strong>
+                    <small>Album title and subtitle</small>
+                </span>
+                <span class="editor-panel-chevron"></span>
+            </summary>
+
+            <div class="editor-panel-content">
+                <div class="mb-3">
+                    <label class="form-label" for="layout-title">Title</label>
+                    <input id="layout-title"
+                           class="form-control"
+                           @bind="albumLayout.Title"
+                           @bind:event="oninput" />
                 </div>
 
-                @if (selectedPageNumber == 0)
+                <div class="mb-0">
+                    <label class="form-label" for="layout-subtitle">Subtitle</label>
+                    <textarea id="layout-subtitle"
+                              class="form-control"
+                              rows="3"
+                              @bind="albumLayout.Subtitle"
+                              @bind:event="oninput"></textarea>
+                </div>
+            </div>
+        </details>
+
+        <div class="layout-preview">
+            <LayoutPageRenderer AlbumId="@album.Id"
+                                IsTitlePage="true"
+                                PageNumber="0"
+                                Title="@albumLayout.Title"
+                                Subtitle="@albumLayout.Subtitle"
+                                CoverPhotoId="@albumLayout.CoverPhotoId"
+                                PhotoLookup="@photoLookup"
+                                Editable="true"
+                                OnPhotoDragStarted="HandleDragStarted"
+                                OnPhotoDropped="HandleDropped"
+                                OnPhotoRemoved="HandleRemoved"
+                                OnZoomChanged="HandleZoomChanged"
+                                OnPositionChanged="HandlePositionChanged" />
+        </div>
+    }
+    else if (selectedPage is not null)
+    {
+        <div class="page-actions">
+            <div>
+                <h2>Page @selectedPage.Number</h2>
+                <p>Choose a design and customise its appearance.</p>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        @onclick="() => MovePage(selectedPage.Number, -1)"
+                        disabled="@(selectedPage.Number == 1)"
+                        title="Move page up">
+                    ↑
+                </button>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        @onclick="() => MovePage(selectedPage.Number, 1)"
+                        disabled="@(selectedPage.Number == albumLayout.Pages.Count)"
+                        title="Move page down">
+                    ↓
+                </button>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        @onclick="() => DeletePage(selectedPage.Number)">
+                    Delete page
+                </button>
+            </div>
+        </div>
+
+        <details class="editor-panel" open>
+            <summary class="editor-panel-summary">
+                <span class="editor-panel-icon">▦</span>
+                <span class="editor-panel-heading">
+                    <strong>Page template</strong>
+                    <small>Select a photo layout</small>
+                </span>
+                <span class="editor-panel-chevron"></span>
+            </summary>
+
+            <div class="editor-panel-content template-panel-content">
+                @if (layoutTemplates is null)
                 {
-                    <div class="mb-3">
-                        <label class="form-label" for="layout-title">Title</label>
-                        <input id="layout-title" class="form-control" @bind="albumLayout.Title" />
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label" for="layout-subtitle">Subtitle</label>
-                        <textarea id="layout-subtitle" class="form-control" rows="3" @bind="albumLayout.Subtitle"></textarea>
-                    </div>
-                    <LayoutPageRenderer AlbumId="@album.Id"
-                                        IsTitlePage="true"
-                                        PageNumber="0"
-                                                     Title="@(albumLayout.Title)"
-                                                     Subtitle="@(albumLayout.Subtitle)"
-                                                     CoverPhotoId="@(albumLayout.CoverPhotoId)"
-                                        PhotoLookup="@photoLookup"
-                                        Editable="true"
-                                        OnPhotoDragStarted="HandleDragStarted"
-                                        OnPhotoDropped="HandleDropped"
-                                        OnPhotoRemoved="HandleRemoved"
-                                        OnZoomChanged="HandleZoomChanged"
-                                        OnPositionChanged="HandlePositionChanged" />
+                    <p class="text-muted mb-0">Loading templates...</p>
                 }
-                else if (selectedPage is not null)
+                else
                 {
-                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                        <div class="layout-design-selector">
-                            <label class="form-label mb-1" for="template-select">Designs</label>
-                            @if (layoutTemplates == null)
+                    <LayoutTemplateSelector @key="selectedPage.Number"
+                                            Templates="layoutTemplates"
+                                            SelectedTemplateId="selectedPage.TemplateId"
+                                            PageHasPhotos="@selectedPage.Photos.Any(slot => !string.IsNullOrWhiteSpace(slot.PhotoId))"
+                                            SelectedTemplateIdChanged="OnTemplateSelected" />
+                }
+            </div>
+        </details>
+
+        <details class="editor-panel" open>
+            <summary class="editor-panel-summary">
+                <span class="editor-panel-icon">Aa</span>
+                <span class="editor-panel-heading">
+                    <strong>Page appearance</strong>
+                    <small>Title, typography and background</small>
+                </span>
+                <span class="editor-panel-chevron"></span>
+            </summary>
+
+            <div class="editor-panel-content">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label" for="page-title">Optional title</label>
+                        <input id="page-title"
+                               class="form-control"
+                               @bind="selectedPage.Appearance.Title"
+                               @bind:event="oninput"
+                               @bind:after="MarkPageAppearanceChanged" />
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <label class="form-label" for="page-title-font">Font family</label>
+                        <select id="page-title-font"
+                                class="form-select"
+                                @bind="selectedPage.Appearance.FontFamily"
+                                @bind:after="MarkPageAppearanceChanged">
+                            @foreach (var font in PageAppearance.AvailableFonts)
                             {
-                                <div>Loading templates...</div>
+                                <option value="@font">@font</option>
                             }
-                            else
-                            {
-                                <LayoutTemplateSelector @key="selectedPage.Number"
-                                                        Templates="layoutTemplates"
-                                                        SelectedTemplateId="selectedPage.TemplateId"
-                                                        PageHasPhotos="@selectedPage.Photos.Any(slot => !string.IsNullOrWhiteSpace(slot.PhotoId))"
-                                                        SelectedTemplateIdChanged="OnTemplateSelected" />
-                            }
-                        </div>
-                        <div class="d-flex gap-2">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => MovePage(selectedPage.Number, -1)" disabled="@(selectedPage.Number == 1)">↑</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => MovePage(selectedPage.Number, 1)" disabled="@(selectedPage.Number == albumLayout.Pages.Count)">↓</button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeletePage(selectedPage.Number)">Delete page</button>
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-md-3">
+                        <label class="form-label" for="page-title-size">Font size</label>
+                        <div class="input-group">
+                            <input id="page-title-size"
+                                   class="form-control"
+                                   type="number"
+                                   min="12"
+                                   max="96"
+                                   @bind="selectedPage.Appearance.FontSize"
+                                   @bind:after="MarkPageAppearanceChanged" />
+                            <span class="input-group-text">px</span>
                         </div>
                     </div>
-                    <section class="page-appearance-editor card card-body mb-3" aria-labelledby="page-appearance-heading">
-                        <h2 id="page-appearance-heading" class="h6">Page appearance</h2>
-                        <div class="row g-2">
-                            <div class="col-12 col-md-6">
-                                <label class="form-label" for="page-title">Optional title</label>
-                                <input id="page-title" class="form-control" @bind="selectedPage.Appearance.Title" @bind:event="oninput" @bind:after="MarkPageAppearanceChanged" />
-                            </div>
-                            <div class="col-12 col-md-6">
-                                <label class="form-label" for="page-title-font">Font</label>
-                                <select id="page-title-font" class="form-select" @bind="selectedPage.Appearance.FontFamily" @bind:after="MarkPageAppearanceChanged">
-                                    @foreach (var font in PageAppearance.AvailableFonts)
-                                    {
-                                        <option value="@font">@font</option>
-                                    }
-                                </select>
-                            </div>
-                            <div class="col-6 col-md-3">
-                                <label class="form-label" for="page-title-color">Text color</label>
-                                <input id="page-title-color" class="form-control form-control-color w-100" type="color" @bind="selectedPage.Appearance.TextColor" @bind:after="MarkPageAppearanceChanged" />
-                            </div>
-                            <div class="col-6 col-md-3">
-                                <label class="form-label" for="page-title-size">Text size (px)</label>
-                                <input id="page-title-size" class="form-control" type="number" min="12" max="96" @bind="selectedPage.Appearance.FontSize" @bind:after="MarkPageAppearanceChanged" />
-                            </div>
-                            <div class="col-6 col-md-3">
-                                <label class="form-label" for="page-title-alignment">Title alignment</label>
-                                <select id="page-title-alignment" class="form-select" @bind="selectedPage.Appearance.TitleAlignment" @bind:after="MarkPageAppearanceChanged">
-                                    <option value="@PageTitleAlignment.Left">Left</option>
-                                    <option value="@PageTitleAlignment.Center">Center</option>
-                                    <option value="@PageTitleAlignment.Right">Right</option>
-                                </select>
-                            </div>
-                            <div class="col-6 col-md-3">
-                                <label class="form-label" for="page-background-style">Background</label>
-                                <select id="page-background-style" class="form-select" @bind="selectedPage.Appearance.BackgroundStyle" @bind:after="MarkPageAppearanceChanged">
-                                    <option value="@PageBackgroundStyle.Solid">Solid color</option>
-                                    <option value="@PageBackgroundStyle.Gradient">Two-color gradient</option>
-                                </select>
-                            </div>
-                            <div class="col-6 col-md-3">
-                                <label class="form-label" for="page-background-color">@(selectedPage.Appearance.BackgroundStyle == PageBackgroundStyle.Gradient ? "Gradient start" : "Background color")</label>
-                                <input id="page-background-color" class="form-control form-control-color w-100" type="color" @bind="selectedPage.Appearance.BackgroundColor" @bind:after="MarkPageAppearanceChanged" />
-                            </div>
-                            @if (selectedPage.Appearance.BackgroundStyle == PageBackgroundStyle.Gradient)
-                            {
-                                <div class="col-6 col-md-3">
-                                    <label class="form-label" for="page-background-end-color">Gradient end</label>
-                                    <input id="page-background-end-color" class="form-control form-control-color w-100" type="color" @bind="selectedPage.Appearance.GradientEndColor" @bind:after="MarkPageAppearanceChanged" />
-                                </div>
-                            }
+
+                    <div class="col-6 col-md-3">
+                        <label class="form-label" for="page-title-alignment">Alignment</label>
+                        <select id="page-title-alignment"
+                                class="form-select"
+                                @bind="selectedPage.Appearance.TitleAlignment"
+                                @bind:after="MarkPageAppearanceChanged">
+                            <option value="@PageTitleAlignment.Left">Left</option>
+                            <option value="@PageTitleAlignment.Center">Center</option>
+                            <option value="@PageTitleAlignment.Right">Right</option>
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-md-3">
+                        <label class="form-label" for="page-title-color">Text color</label>
+                        <div class="color-control">
+                            <input id="page-title-color"
+                                   type="color"
+                                   class="form-control form-control-color"
+                                   @bind="selectedPage.Appearance.TextColor"
+                                   @bind:after="MarkPageAppearanceChanged" />
+                            <span>@selectedPage.Appearance.TextColor</span>
                         </div>
-                    </section>
-                    <LayoutPageRenderer AlbumId="@album.Id"
-                                        TemplateId="@selectedPage.TemplateId"
-                                        PageNumber="@selectedPage.Number"
-                                        Photos="@selectedPage.Photos"
-                                        Appearance="@selectedPage.Appearance"
-                                        PhotoLookup="@photoLookup"
-                                        Editable="true"
-                                        OnPhotoDragStarted="HandleDragStarted"
-                                        OnPhotoDropped="HandleDropped"
-                                        OnPhotoRemoved="HandleRemoved"
-                                        OnZoomChanged="HandleZoomChanged"
-                                        OnPositionChanged="HandlePositionChanged" />
-                }
-            </main>
+                    </div>
+
+                    <div class="col-6 col-md-3">
+                        <label class="form-label" for="page-background-style">Background</label>
+                        <select id="page-background-style"
+                                class="form-select"
+                                @bind="selectedPage.Appearance.BackgroundStyle"
+                                @bind:after="MarkPageAppearanceChanged">
+                            <option value="@PageBackgroundStyle.Solid">Solid color</option>
+                            <option value="@PageBackgroundStyle.Gradient">Gradient</option>
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-md-3">
+                        <label class="form-label" for="page-background-color">
+                            @(selectedPage.Appearance.BackgroundStyle == PageBackgroundStyle.Gradient
+                                ? "Gradient start"
+                                : "Background color")
+                        </label>
+                        <input id="page-background-color"
+                               type="color"
+                               class="form-control form-control-color w-100"
+                               @bind="selectedPage.Appearance.BackgroundColor"
+                               @bind:after="MarkPageAppearanceChanged" />
+                    </div>
+
+                    @if (selectedPage.Appearance.BackgroundStyle == PageBackgroundStyle.Gradient)
+                    {
+                        <div class="col-6 col-md-3">
+                            <label class="form-label" for="page-background-end-color">
+                                Gradient end
+                            </label>
+                            <input id="page-background-end-color"
+                                   type="color"
+                                   class="form-control form-control-color w-100"
+                                   @bind="selectedPage.Appearance.GradientEndColor"
+                                   @bind:after="MarkPageAppearanceChanged" />
+                        </div>
+                    }
+                </div>
+            </div>
+        </details>
+
+        <div class="layout-preview">
+            <LayoutPageRenderer AlbumId="@album.Id"
+                                TemplateId="@selectedPage.TemplateId"
+                                PageNumber="@selectedPage.Number"
+                                Photos="@selectedPage.Photos"
+                                Appearance="@selectedPage.Appearance"
+                                PhotoLookup="@photoLookup"
+                                Editable="true"
+                                OnPhotoDragStarted="HandleDragStarted"
+                                OnPhotoDropped="HandleDropped"
+                                OnPhotoRemoved="HandleRemoved"
+                                OnZoomChanged="HandleZoomChanged"
+                                OnPositionChanged="HandlePositionChanged" />
+        </div>
+    }
+</main>
+
         </div>
     </div>
 }
