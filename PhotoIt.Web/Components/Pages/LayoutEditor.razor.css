@@ -64,6 +64,25 @@
     text-overflow: ellipsis;
 }
 
+.photo-used-check {
+    
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #198754;
+    color: white;
+    border: 2px solid white;
+    border-radius: 50%;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 2px 5px rgb(0 0 0 / 25%);
+}
+
 
 .page-editor ::deep .layout-paper,
 .page-editor ::deep .layout-page-renderer.title-page {

@@ -4,61 +4,6 @@ using System.Security.Cryptography;
 
 namespace PhotoIt.Data;
 
-public class Album
-{
-    [BsonId]
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
-    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
-    public string ImageFolderName { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public string FullDescription { get; set; } = string.Empty;
-
-    public TripGraph TripGraph { get; set; } = new TripGraph(); 
-
-    public string Intro { get; set; } = string.Empty;
-
-    public string UserId { get; set; } = string.Empty;  
-
-    public string ShareSlug { get; set; } = string.Empty;
-    public int ShareSeed { get; set; }
-}
-
-public sealed class AlbumPhoto
-{
-    [BsonId]
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
-
-    public string UserId { get; set; } = string.Empty;  
-    public string AlbumId { get; set; } = string.Empty;
-    public string BlobName { get; set; } = string.Empty;
-    public string OriginalFileName { get; set; } = string.Empty;
-    public string ContentType { get; set; } = "application/octet-stream";
-    public long Length { get; set; }
-    public int? PixelWidth { get; set; }
-    public int? PixelHeight { get; set; }
-    public DateTime UploadedUtc { get; set; } = DateTime.UtcNow;
-    public DateTime? DateTakenUtc { get; set; }
-    public double? Latitude { get; set; }
-    public double? Longitude { get; set; }
-    public string? CameraMake { get; set; }
-    public string? CameraModel { get; set; }
-    public string? LensModel { get; set; }
-    public string? FocalLength { get; set; }
-    public string? FocalLength35Mm { get; set; }
-    public string? SubjectDistance { get; set; }
-    public string? Flash { get; set; }
-    public string? Dimensions { get; set; }
-    public string? ExposureTime { get; set; }
-    public string? FNumber { get; set; }
-    public string? IsoSpeed { get; set; }
-    public string? ExposureProgram { get; set; }
-    public string? WhiteBalance { get; set; }
-    public string Description { get; set; } = string.Empty;
-    public List<string> Tags { get; set; } = [];
-    public DateTime? IndexedUtc { get; set; }
-}
-
 public sealed class AlbumCatalog : IDisposable
 {
     private readonly LiteDatabase _database;
@@ -92,6 +37,14 @@ public sealed class AlbumCatalog : IDisposable
     public Album? Get(string id)
     {
         return _albums.FindById(id);
+    }
+
+    public string[] PhotoIds(string albumId)
+    {
+        return _photos.Query()
+            .Where(photo => photo.AlbumId == albumId)
+            .Select(photo => photo.Id)
+            .ToArray();
     }
 
     public Album? GetShared(string slug, int seed)

@@ -67,10 +67,20 @@ else
                             <div class="photo-library-grid">
                                 @foreach (var photo in group.Photos)
                                 {
+                                    var usedInLayout = albumLayout.CoverPhotoId == photo.Id
+                                        || albumLayout.Pages.Any(page => page.Photos.Any(slot => slot.PhotoId == photo.Id));
+
                                     <div class="photo-library-item draggable"
                                          draggable="true"
                                          @ondragstart="() => HandleLibraryDragStart(photo.Id)">
                                         <img src="albums/@album.Id/photos/@photo.Id/content" alt="@photo.OriginalFileName" />
+                                        @if (usedInLayout)
+                                        {
+                                            <span class="photo-used-check" title="Used in album">
+                                                ✓
+                                            </span>
+                                        }
+       
                                         <span class="photo-library-name" title="@photo.OriginalFileName">@photo.OriginalFileName</span>
                                     </div>
                                 }
@@ -357,7 +367,7 @@ else
 @code {
     [Parameter]
     public string Id { get; set; } = string.Empty;
-
+        
     private Album? album;
     private ViewableAlbumLayout? albumLayout;
     private IReadOnlyList<AlbumPhoto> photos = [];
@@ -407,6 +417,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         album = Catalog.Get(Id);
+       
         if (album is null)
             return;
 
@@ -559,6 +570,7 @@ else
             }
 
             albumLayout!.CoverPhotoId = draggedPhotoId;
+           
             if (draggedFromPageNumber is int pageNumber && pageNumber > 0 &&
                 draggedFromSlotCol is int sourceCol && draggedFromSlotRow is int sourceRow)
                 ClearSlotOnPage(pageNumber, sourceCol, sourceRow);
@@ -592,7 +604,7 @@ else
         if (draggedFromTitlePage)
         {
             albumLayout!.CoverPhotoId = null;
-            targetSlot.PhotoId = draggedPhotoId;
+            targetSlot.PhotoId = draggedPhotoId;          
             ResetSlotComposition(targetSlot);
             ClearDragState();
             return Task.CompletedTask;
@@ -605,8 +617,8 @@ else
         }
 
         if (draggedFromSlotCol is null)
-        {
-            targetSlot.PhotoId = draggedPhotoId;
+        {                      
+            targetSlot.PhotoId = draggedPhotoId;            
             ResetSlotComposition(targetSlot);
         }
         else if (draggedFromSlotCol == args.slotCol && draggedFromSlotRow == args.slotRow)
@@ -654,6 +666,7 @@ else
         if (args.IsTitlePage)
         {
             albumLayout!.CoverPhotoId = null;
+            
             return Task.CompletedTask;
         }
 
@@ -664,11 +677,14 @@ else
         return Task.CompletedTask;
     }
 
-    private static void ClearSlot(LayoutPage page, int slotCol, int slotRow)
+    private void ClearSlot(LayoutPage page, int slotCol, int slotRow)
     {
         var slot = page.Photos.FirstOrDefault(item => item.Col == slotCol && item.Row == slotRow);
+
         if (slot is not null)
+        {           
             slot.PhotoId = null;
+        }
     }
 
     private static void ResetSlotComposition(PhotoSlot slot)
