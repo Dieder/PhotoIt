@@ -97,8 +97,8 @@ else
             
             <a class="toolbar-button"
                href="/albums/@album.Id/theme">
-            
-                <div class="toolbar-buttontheme">
+               
+                <div class="toolbar-button-theme">
                 @if (album.BackGroundFill.ImagePath is null)
                 {
                     <div class="theme-color"
@@ -107,7 +107,7 @@ else
                 }
                 else
                 {
-                    <img src="@album.BackGroundFill.ImagePath" alt="Theme" />
+                    <img class="theme-img" src="@album.BackGroundFill.ImagePath" alt="Theme" />
                 }
                 </div>
 

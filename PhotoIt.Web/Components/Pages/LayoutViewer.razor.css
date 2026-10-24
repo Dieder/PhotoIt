@@ -15,6 +15,13 @@
     max-height: var(--album-available-height);
 }
 
+.back-to-album-link {
+    padding: 0.3rem;
+    text-decoration: none;
+    background:none;
+    background-color: bisque;
+}
+
 .album-introduction-page {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -48,6 +55,15 @@
 }
 
 .layout-viewer-nav {
+    
+   
     border-top: 1px solid #dee2e6;
     padding-top: 1rem;
+}
+
+.layout-viewer-pagelabel {
+    padding: 0.4rem;
+    border: 0.1rem solid blue;
+    border-radius: 1rem;
+    background-color: bisque;
 }

@@ -74,11 +74,23 @@
         }
 }
 
-toolbar-buttontheme {
+.toolbar-button-theme {
+   
     background-color: var(--primary-color);
     color: var(--text-color);
-    border: 0.155rem;
+    border: 0.155rem solid black;
     padding: 5px 5px;
     border-radius: 0.25rem;
     transition: background-color 0.3s ease;
+}
+
+.theme-img {
+    max-width: 2rem;
+    max-height: 2rem;
+}
+
+.theme-color {
+    min-width: 2rem;
+    min-height: 2rem;
+    background-color: red;
 }

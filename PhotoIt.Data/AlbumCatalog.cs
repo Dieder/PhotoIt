@@ -220,6 +220,8 @@ public sealed class AlbumCatalog : IDisposable
             throw new ArgumentException("Album not found.", nameof(id));
         album.BackGroundFill = fill;
         album.UpdatedUtc = DateTime.UtcNow;
+
+        Update(album);
     }
     public static string FormatShareSlug(string value)
     {

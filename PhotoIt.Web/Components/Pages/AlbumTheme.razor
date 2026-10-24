@@ -1,8 +1,9 @@
 ﻿@page "/albums/{Id}/theme"
 @using PhotoIt.Data
 @using System.IO
+@rendermode InteractiveServer
 @inject AlbumCatalog Catalog
-@inject NavigationManager NavManager
+@inject NavigationManager NavigationManager
 @using Microsoft.AspNetCore.Hosting
 @inject IWebHostEnvironment Environment
 
@@ -218,8 +219,9 @@
             BackroundColor = color,
             ImagePath = null
         };
-
-        Catalog.UpdateBackground(Id, Value);
+        
+        Catalog.UpdateAlbumBackground(Id, Value);
+        NavigationManager.NavigateTo($"/albums/{Id}");
     }
 
     private async Task SelectImage(string url)
@@ -230,7 +232,8 @@
             ImagePath = url
         };
 
-        await ValueChanged.InvokeAsync(Value);
+        Catalog.UpdateAlbumBackground(Id, Value);
+        NavigationManager.NavigateTo($"/albums/{Id}");
     }
 
     private string PreviewStyle =>
