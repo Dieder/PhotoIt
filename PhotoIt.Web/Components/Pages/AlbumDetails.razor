@@ -94,6 +94,27 @@ else
                 <span>Edit Album</span>
             </a>
 
+            
+            <a class="toolbar-button"
+               href="/albums/@album.Id/theme">
+            
+                <div class="toolbar-buttontheme">
+                @if (album.BackGroundFill.ImagePath is null)
+                {
+                    <div class="theme-color"
+                         style="background-color:@album.BackGroundFill.BackroundColor">
+                    </div>
+                }
+                else
+                {
+                    <img src="@album.BackGroundFill.ImagePath" alt="Theme" />
+                }
+                </div>
+
+                <span>Theme</span>
+            </a>
+
+
             <a class="toolbar-button"
                href="/travelroute/@album.Id">
 

@@ -1,0 +1,156 @@
+.background-picker {
+    max-width: 900px;
+    display: grid;
+    gap: 18px;
+}
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tab {
+    padding: 9px 18px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: white;
+    color: #334155;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+    .tab.active {
+        background: #2563eb;
+        border-color: #2563eb;
+        color: white;
+    }
+
+.color-table {
+    display: grid;
+    gap: 10px;
+}
+
+.color-row {
+    display: grid;
+    grid-template-columns: 75px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+}
+
+.color-label {
+    font-weight: 600;
+}
+
+.shades {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.swatch {
+    min-width: 0;
+    height: 48px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+    .swatch.selected {
+        outline: 3px solid #2563eb;
+        outline-offset: 2px;
+    }
+
+.selection-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: white;
+    color: #111;
+    font-weight: bold;
+}
+
+.hint {
+    margin: 0;
+    color: #64748b;
+    text-align: center;
+    font-size: 0.85rem;
+}
+
+.image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.image-card {
+    padding: 0;
+    overflow: hidden;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    background: white;
+    text-align: left;
+    cursor: pointer;
+}
+
+    .image-card.selected {
+        border-color: #2563eb;
+        box-shadow: 0 0 0 2px #2563eb;
+    }
+
+    .image-card img {
+        display: block;
+        width: 100%;
+        height: 120px;
+        object-fit: cover;
+    }
+
+.image-caption {
+    display: grid;
+    gap: 4px;
+    padding: 10px;
+    overflow-wrap: anywhere;
+}
+
+    .image-caption small {
+        color: #64748b;
+    }
+
+.preview {
+    height: 220px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    background-size: cover;
+    background-position: center;
+}
+
+    .preview span {
+        padding: 8px 14px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.85);
+        color: #111;
+    }
+
+button:focus-visible {
+    outline: 3px solid #2563eb;
+    outline-offset: 3px;
+}
+
+@media (max-width: 480px) {
+    .color-row {
+        grid-template-columns: 55px minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    .shades {
+        gap: 5px;
+    }
+
+    .swatch {
+        height: 38px;
+    }
+}

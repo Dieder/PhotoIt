@@ -73,3 +73,12 @@
             transform: none;
         }
 }
+
+toolbar-buttontheme {
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    border: 0.155rem;
+    padding: 5px 5px;
+    border-radius: 0.25rem;
+    transition: background-color 0.3s ease;
+}

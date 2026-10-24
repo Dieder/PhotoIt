@@ -211,6 +211,16 @@ public sealed class AlbumCatalog : IDisposable
         return value.Trim().ToUpperInvariant();
     }
 
+    public void UpdateAlbumBackground(string id, BackGroundFill fill)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        ArgumentNullException.ThrowIfNull(fill);
+        var album = Get(id);
+        if (album is null)
+            throw new ArgumentException("Album not found.", nameof(id));
+        album.BackGroundFill = fill;
+        album.UpdatedUtc = DateTime.UtcNow;
+    }
     public static string FormatShareSlug(string value)
     {
         var source = value.Trim();

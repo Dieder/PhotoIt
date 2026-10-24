@@ -9,6 +9,7 @@ public class Album
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public string ImageFolderName { get; set; } = string.Empty;
+    public BackGroundFill BackGroundFill { get; set; } = new BackGroundFill() { BackroundColor="white"};
     public string Name { get; set; } = string.Empty;
     public string FullDescription { get; set; } = string.Empty;
 
