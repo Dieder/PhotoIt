@@ -6,6 +6,7 @@
 @using PhotoIt.AiOrchestration
 @using AiFoundryLocal
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
 @inject AlbumCatalog Catalog
 @inject AzurePhotoStorage Storage
 @inject PhotoThumbnailService Thumbnails
@@ -15,6 +16,7 @@
 @inject ILogger<AlbumPhotos> Logger
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
 @using PhotoIt.Web.Components
 @using PhotoIt.Web.Components.Navigation
 
@@ -59,7 +61,19 @@ else
         {
         <div class="border rounded p-4 mb-4 bg-light">
             <label class="form-label" for="photo-upload">Upload photos and videos</label>
-            <InputFile id="photo-upload" OnChange="UploadAsync" multiple accept="image/*,.rw2,.mp4" />
+            <div class="photo-upload-dropzone" data-file-dropzone>
+                <InputFile id="photo-upload"
+                           class="photo-upload-input"
+                           data-file-upload-batch
+                           OnChange="UploadAsync"
+                           multiple
+                           accept="image/*,.jpg,.rw2,.mp4"
+                           disabled="@isUploading" />
+                <div class="photo-upload-prompt" aria-hidden="true">
+                    <strong>Drop photos here or click to choose files</strong>
+                    <span>Images and MP4 videos are supported; up to 60 files per batch.</span>
+                </div>
+            </div>
             <div class="form-text">Images and MP4 videos are stored in Azure Blob Storage under @album.ImageFolderName. Videos can be placed in Page L slots and play automatically in the album viewer.</div>
 
             @if (isUploading || uploadTotal > 0)
@@ -364,6 +378,10 @@ else
 }
 
 @code {
+    private const int MaxUploadFileCount = 1000;
+    private const int UploadBatchSize = 60;
+    private const string PhotoUploadInputId = "photo-upload";
+
     [Parameter]
     public string Id { get; set; } = string.Empty;
 
@@ -528,20 +546,38 @@ else
     {
         if (album is null)
             return;
-
-        var files = args.GetMultipleFiles(100).ToList();
-        if (files.Count == 0)
+        if (args.FileCount == 0)
             return;
 
-        isUploading = true;
-        uploadTotal = files.Count;
-        uploadProgress = 0;
-        uploadStatus = "Uploading...";
-        errorMessage = null;
+        var totalFiles = await JS.InvokeAsync<int>(
+            "photoUpload.getTotal",
+            PhotoUploadInputId,
+            args.FileCount);
+        if (totalFiles > MaxUploadFileCount)
+        {
+            await JS.InvokeVoidAsync("photoUpload.abort", PhotoUploadInputId);
+            uploadTotal = totalFiles;
+            uploadProgress = 0;
+            uploadStatus = "Too many files";
+            errorMessage = $"Select no more than {UploadBatchSize:N0} files per upload.";
+            return;
+        }
+
+        if (!isUploading)
+        {
+            isUploading = true;
+            uploadTotal = totalFiles;
+            uploadProgress = 0;
+            uploadStatus = "Uploading...";
+            errorMessage = null;
+        }
+
+        var uploadContinues = false;
         System.Diagnostics.Activity? uploadActivity = null;
 
         try
         {
+            var files = args.GetMultipleFiles(UploadBatchSize);
             foreach (var file in files)
             {
                 uploadActivity = PhotoItTelemetry.ActivitySource.StartActivity("photo.upload");
@@ -633,12 +669,17 @@ else
                 await InvokeAsync(StateHasChanged);
             }
 
+            uploadContinues = await JS.InvokeAsync<bool>("photoUpload.advance", PhotoUploadInputId);
+            if (uploadContinues)
+                return;
+
             await Catalog.TouchAsync(album.Id);
             await LoadPhotosAsync();
             uploadStatus = "Completed";
         }
         catch (Exception exception)
         {
+            await JS.InvokeVoidAsync("photoUpload.abort", PhotoUploadInputId);
             uploadActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Media upload failed");
             uploadActivity?.Dispose();
             PhotoItTelemetry.RecordPhotoUploadFailure();
@@ -648,9 +689,12 @@ else
         }
         finally
         {
-            isUploading = false;
-            if (uploadProgress >= uploadTotal)
-                uploadProgress = uploadTotal;
+            if (!uploadContinues)
+            {
+                isUploading = false;
+                if (uploadProgress >= uploadTotal)
+                    uploadProgress = uploadTotal;
+            }
             await InvokeAsync(StateHasChanged);
         }
     }

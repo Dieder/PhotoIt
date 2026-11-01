@@ -56,31 +56,18 @@ public sealed class AlbumCatalog
 
         album.ShareSlug = slug;
         await using var db = _contextFactory.CreateDbContext();
-        do
-        {
-            album.ShareSeed = RandomNumberGenerator.GetInt32(100_000, 1_000_000);
-        }
-        while (await db.Set<Album>().AnyAsync(candidate =>
-                   candidate.Id != album.Id &&
-                   candidate.ShareSlug == album.ShareSlug &&
-                   candidate.ShareSeed == album.ShareSeed, ct));
+        album.ShareSeed = RandomNumberGenerator.GetInt32(1, int.MaxValue);
 
         db.Set<Album>().Update(album);
         await db.SaveChangesAsync(ct);
     }
 
     public async Task<bool> ImageFolderNameExistsAsync(string imageFolderName, CancellationToken ct = default)
-    {       
+    {
         var normalizedName = NormalizeFolderName(imageFolderName);
         await using var db = _contextFactory.CreateDbContext();
-        try
-        {
-            return await db.Set<Album>().AnyAsync(album =>
-                album.ImageFolderName == normalizedName);
-        }
-        catch(Exception ex) { 
-            return false; 
-        }
+        return await db.Set<Album>()
+            .FirstOrDefaultAsync(album => album.ImageFolderName == normalizedName, ct) is not null;
     }
 
     public async Task CreateAsync(Album album, CancellationToken ct = default)
@@ -101,7 +88,11 @@ public sealed class AlbumCatalog
         album.ImageFolderName = NormalizeFolderName(album.ImageFolderName);
         album.UpdatedUtc = DateTime.UtcNow;
         await using var db = _contextFactory.CreateDbContext();
-        if (!await db.Set<Album>().AnyAsync(existing => existing.Id == album.Id, ct))
+        var existing = await db.Set<Album>()
+            .Where(existing => existing.UserId == album.UserId)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(existing => existing.Id == album.Id, ct);
+        if (existing is null)
             return false;
 
         db.Set<Album>().Update(album);
@@ -196,7 +187,11 @@ public sealed class AlbumCatalog
     {
         ArgumentNullException.ThrowIfNull(photo);
         await using var db = _contextFactory.CreateDbContext();
-        if (!await db.Set<AlbumPhoto>().AnyAsync(existing => existing.Id == photo.Id, ct))
+        var existing = await db.Set<AlbumPhoto>()
+            .Where(existing => existing.AlbumId == photo.AlbumId)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(existing => existing.Id == photo.Id, ct);
+        if (existing is null)
             return false;
 
         db.Set<AlbumPhoto>().Update(photo);
@@ -229,7 +224,9 @@ public sealed class AlbumCatalog
     public async Task<bool> HasLayoutAsync(string albumId, CancellationToken ct = default)
     {
         await using var db = _contextFactory.CreateDbContext();
-        return await db.Set<ViewableAlbumLayout>().AnyAsync(layout => layout.AlbumId == albumId, ct);
+        return await db.Set<ViewableAlbumLayout>()
+            .Where(layout => layout.AlbumId == albumId)
+            .FirstOrDefaultAsync(layout => layout.AlbumId == albumId, ct) is not null;
     }
 
     public async Task SaveLayoutAsync(ViewableAlbumLayout layout, CancellationToken ct = default)
@@ -241,7 +238,11 @@ public sealed class AlbumCatalog
         NormalizeLayout(layout);
         layout.UpdatedUtc = DateTime.UtcNow;
         await using var db = _contextFactory.CreateDbContext();
-        if (await db.Set<ViewableAlbumLayout>().AnyAsync(existing => existing.AlbumId == layout.AlbumId, ct))
+        var existing = await db.Set<ViewableAlbumLayout>()
+            .Where(existing => existing.AlbumId == layout.AlbumId)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(existing => existing.AlbumId == layout.AlbumId, ct);
+        if (existing is not null)
             db.Set<ViewableAlbumLayout>().Update(layout);
         else
             db.Set<ViewableAlbumLayout>().Add(layout);

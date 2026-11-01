@@ -1,3 +1,52 @@
+.photo-upload-dropzone {
+    position: relative;
+    display: grid;
+    min-height: 7rem;
+    place-items: center;
+    margin-bottom: .5rem;
+    padding: 1.25rem;
+    border: 2px dashed #adb5bd;
+    border-radius: .5rem;
+    background: #fff;
+    text-align: center;
+}
+
+.photo-upload-dropzone:focus-within {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 .2rem rgb(13 110 253 / 15%);
+}
+
+.photo-upload-dropzone.photo-upload-dragover {
+    border-color: #0d6efd;
+    background: #e7f1ff;
+}
+
+.photo-upload-input {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+    opacity: 0;
+}
+
+.photo-upload-input:disabled {
+    cursor: wait;
+}
+
+.photo-upload-prompt {
+    display: grid;
+    gap: .25rem;
+    color: #495057;
+    pointer-events: none;
+}
+
+.photo-upload-prompt span {
+    color: #6c757d;
+    font-size: .875rem;
+}
+
 .chapter-photo-picker {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
