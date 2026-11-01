@@ -11,8 +11,8 @@ builder.AddProject<Projects.PhotoIt_Web>("webfrontend")
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")
     .WithReference(apiService)
-    .WithEnvironment("Google:ClientId", clientParameter)
-    .WithEnvironment("Google:ClientSecret", clientsecretParameter)
+        .WithEnvironment("Google__ClientId", clientParameter)
+        .WithEnvironment("Google__ClientSecret", clientsecretParameter)
     .WaitFor(apiService);
 
 builder.Build().Run();
