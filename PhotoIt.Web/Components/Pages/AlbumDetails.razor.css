@@ -94,3 +94,89 @@
     min-height: 2rem;
     background-color: red;
 }
+
+.album-delete-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgb(0 0 0 / 55%);
+}
+
+.album-delete-dialog {
+    width: min(100%, 32rem);
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    background: white;
+    box-shadow: 0 1rem 3rem rgb(0 0 0 / 25%);
+}
+
+.album-delete-dialog-header,
+.album-delete-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.album-delete-dialog-header h2,
+.album-delete-summary h3,
+.album-delete-summary p {
+    margin: 0;
+}
+
+.album-delete-dialog-header h2 {
+    font-size: 1.25rem;
+}
+
+.album-delete-close {
+    border: 0;
+    background: transparent;
+    color: #555;
+    font-size: 1.75rem;
+    line-height: 1;
+}
+
+.album-delete-summary {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.25rem 0;
+}
+
+.album-delete-summary img,
+.album-delete-no-cover {
+    width: 6rem;
+    height: 6rem;
+    flex: 0 0 6rem;
+    border-radius: 0.5rem;
+    object-fit: cover;
+}
+
+.album-delete-no-cover {
+    display: grid;
+    place-items: center;
+    padding: 0.5rem;
+    background: #f1f3f5;
+    color: #6c757d;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+.album-delete-summary h3 {
+    overflow-wrap: anywhere;
+    font-size: 1.1rem;
+}
+
+.album-delete-summary p {
+    margin-top: 0.35rem;
+    color: #6c757d;
+}
+
+.album-delete-actions {
+    justify-content: flex-end;
+    margin-top: 1.25rem;
+}

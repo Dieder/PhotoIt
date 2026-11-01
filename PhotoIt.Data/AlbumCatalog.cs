@@ -102,9 +102,20 @@ public sealed class AlbumCatalog : IDisposable
 
     public bool Delete(string id)
     {
-        _photos.DeleteMany(photo => photo.AlbumId == id);
-        _layouts.Delete(id);
-        return _albums.Delete(id);
+        _database.BeginTrans();
+        try
+        {
+            _photos.DeleteMany(photo => photo.AlbumId == id);
+            _layouts.Delete(id);
+            var deleted = _albums.Delete(id);
+            _database.Commit();
+            return deleted;
+        }
+        catch
+        {
+            _database.Rollback();
+            throw;
+        }
     }
 
     public IReadOnlyList<AlbumPhoto> ListPhotos(string albumId)
