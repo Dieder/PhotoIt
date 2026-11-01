@@ -1,7 +1,9 @@
 ﻿@page "/travelroute/{AlbumId}"
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Web
 @using PhotoIt.Core.Services
 @inject AlbumCatalog Catalog
 @inject NominatimClient NominatimClient
@@ -20,10 +22,18 @@
 <div class="row">
 
     <div class="col-md-4">
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="alert alert-danger" role="alert">@errorMessage</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(statusMessage))
+        {
+            <div class="alert alert-info" role="status">@statusMessage</div>
+        }
 
         @foreach (var leg in Model.Legs.Select((item, index) => new { item, index }))
         {
-            <div class="card mb-2">
+            <div @key="leg.item" class="card mb-2">
 
                 <div class="card-body">
 
@@ -37,9 +47,15 @@
                                 →
                                 <strong>@leg.item.To.Place</strong>
 
-                                <span class="ms-2">
-                                    @GetTransportIcon(leg.item.Transport)
-                                </span>
+                                <span class="ms-2">@GetTransportIcon(leg.item.Transport)</span>
+                                @if (leg.item.DistanceKm is double distance)
+                                {
+                                    <small class="d-block text-muted">~ @distance.ToString("N0") km direct distance</small>
+                                }
+                                @if (leg.item.StartDate is not null || leg.item.EndDate is not null)
+                                {
+                                    <small class="d-block text-muted">@FormatTravelDates(leg.item)</small>
+                                }
 
                             </div>
 
@@ -49,7 +65,6 @@
                                         @onclick="() => SetLegEditingAsync(leg.item, true)">
                                     ✏️
                                 </button>
-
                                 <button class="btn btn-sm btn-outline-danger"
                                         @onclick="() => RemoveLeg(leg.index)">
                                     🗑️
@@ -63,11 +78,31 @@
                     {
                         <div class="mb-2">
 
-                            <label>Van</label>
-
-                            <input class="form-control"
-                                   @bind="leg.item.From.Place"
-                                   @onblur="async (e) => await OnPlaceChanged(leg.item.From)" />
+                            <label for="route-from-@leg.index">From</label>
+                            <input id="route-from-@leg.index"
+                                   class="form-control"
+                                   value="@leg.item.From.Place"
+                                   autocomplete="off"
+                                   placeholder="Type a place name"
+                                   @oninput="args => OnPlaceInputAsync(leg.item.From, args)"
+                                   @onblur="() => ResolveTypedPlaceAsync(leg.item.From)" />
+                            @if (GetPlaceSuggestions(leg.item.From) is { Count: > 0 } fromSuggestions)
+                            {
+                                <div class="place-suggestions">
+                                    @foreach (var suggestion in fromSuggestions)
+                                    {
+                                        <button type="button" class="place-suggestion"
+                                                @onmousedown:preventDefault
+                                                @onclick="() => SelectPlaceAsync(leg.item.From, suggestion)">
+                                            <span>@suggestion.Name</span>
+                                            @if (!string.IsNullOrWhiteSpace(suggestion.Country))
+                                            {
+                                                <small>@suggestion.Country</small>
+                                            }
+                                        </button>
+                                    }
+                                </div>
+                            }
 
                             <small title="@(leg.item.From.FoundName ?? "Not found")">
                                 @(leg.item.From.HasGeoPoint() ? "📍" : "❌")
@@ -77,11 +112,31 @@
 
                         <div class="mb-2">
 
-                            <label>Naar</label>
-
-                            <input class="form-control"
-                                   @bind="leg.item.To.Place"
-                                   @onblur="async (e) => await OnPlaceChanged(leg.item.To)" />
+                            <label for="route-to-@leg.index">To</label>
+                            <input id="route-to-@leg.index"
+                                   class="form-control"
+                                   value="@leg.item.To.Place"
+                                   autocomplete="off"
+                                   placeholder="Type a place name, or select it on the map"
+                                   @oninput="args => OnPlaceInputAsync(leg.item.To, args)"
+                                   @onblur="() => ResolveTypedPlaceAsync(leg.item.To)" />
+                            @if (GetPlaceSuggestions(leg.item.To) is { Count: > 0 } toSuggestions)
+                            {
+                                <div class="place-suggestions">
+                                    @foreach (var suggestion in toSuggestions)
+                                    {
+                                        <button type="button" class="place-suggestion"
+                                                @onmousedown:preventDefault
+                                                @onclick="() => SelectPlaceAsync(leg.item.To, suggestion)">
+                                            <span>@suggestion.Name</span>
+                                            @if (!string.IsNullOrWhiteSpace(suggestion.Country))
+                                            {
+                                                <small>@suggestion.Country</small>
+                                            }
+                                        </button>
+                                    }
+                                </div>
+                            }
 
                             <small title="@(leg.item.To.FoundName ?? "Not found")">
                                 @(leg.item.To.HasGeoPoint() ? "📍" : "❌")
@@ -107,11 +162,27 @@
 
                         </div>
 
+                        <div class="row g-2 mb-3">
+                            <div class="col">
+                                <label class="form-label" for="@($"route-start-{leg.index}")">Travel from</label>
+                                <InputDate id="@($"route-start-{leg.index}")" class="form-control" @bind-Value="leg.item.StartDate" />
+                            </div>
+                            <div class="col">
+                                <label class="form-label" for="@($"route-end-{leg.index}")">Travel to</label>
+                                <InputDate id="@($"route-end-{leg.index}")" class="form-control" @bind-Value="leg.item.EndDate" />
+                            </div>
+                        </div>
+
+                        @if (leg.item.CalculateDistanceKm() is double estimatedDistance)
+                        {
+                            <small class="d-block text-muted mb-2">Estimated direct distance: @estimatedDistance.ToString("N0") km</small>
+                        }
+
                         <div class="d-flex justify-content-between">
 
                             <button class="btn btn-success btn-sm"
                                     @onclick="() => SetLegEditingAsync(leg.item, false)">
-                                ✅
+                                Done
                             </button>
 
                             <button class="btn btn-danger btn-sm"
@@ -129,18 +200,27 @@
 
         <button class="btn btn-primary"
                 @onclick="AddLeg">
-            + Leg toevoegen
+            + Add leg
         </button>
+        <p class="form-text">Each leg has its own start and destination. Change the start place to leave a gap between trips.</p>
 
         <button class="btn btn-success ms-2"
                 @onclick="RefreshMap">
-            Kaart bijwerken
+            Save route
         </button>
 
     </div>
 
     <div class="col-md-8">
-        <div id="travelMap" style="height:800px;"></div>
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <button type="button"
+                    class="btn btn-sm @(isMapSelectionEnabled ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="ToggleMapSelection">
+                @(isMapSelectionEnabled ? "Click map to set destination" : "Choose destination on map")
+            </button>
+            <span class="small text-muted">Zoom with +/− or the mouse wheel; drag to pan.</span>
+        </div>
+        <div id="travelMap" class="travel-route-map"></div>
     </div>
 
 </div>
@@ -153,6 +233,13 @@
 
     private TripGraph Model = new();
     private AuthenticationState authenticationState;
+    private DotNetObjectReference<TravelRoute>? mapCallback;
+    private CancellationTokenSource? placeSearchCts;
+    private RoutePoint? suggestionPoint;
+    private IReadOnlyList<GeoPoint> placeSuggestions = [];
+    private bool isMapSelectionEnabled;
+    private string? errorMessage;
+    private string? statusMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -190,17 +277,28 @@
     {
         if (firstRender)
         {
-            await JS.InvokeVoidAsync("travelMap.initialize");
+            mapCallback = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("travelMap.initialize", mapCallback);
             await RefreshMapDisplayAsync();
         }
     }
 
     private async Task AddLeg()
     {
-        var lastLeg = Model.Legs.Last();
-        lastLeg.IsEditing = false;
-        var lastTo = lastLeg.To;
-        var newFrom = new RoutePoint
+        var previousLeg = Model.Legs.LastOrDefault();
+        if (previousLeg is not null && !previousLeg.IsValid())
+        {
+            errorMessage = "Complete the current leg before adding another.";
+            return;
+        }
+
+        if (previousLeg is not null)
+            previousLeg.IsEditing = false;
+
+        var lastTo = previousLeg?.To;
+        var newFrom = lastTo is null
+            ? new RoutePoint()
+            : new RoutePoint
         {
             Place = lastTo.Place,
             Latitude = lastTo.Latitude,
@@ -215,6 +313,9 @@
             To = new RoutePoint(),
             Transport = TransportType.Car
         });
+        errorMessage = null;
+        isMapSelectionEnabled = false;
+        await JS.InvokeVoidAsync("travelMap.setDestinationSelection", false);
         await RefreshMapDisplayAsync();
     }
 
@@ -226,18 +327,214 @@
         }
         Model.Legs.RemoveAt(index);
         Model.Legs.Skip(index - 1).First().IsEditing = true;
+        if (index == Model.Legs.Count)
+        {
+            isMapSelectionEnabled = false;
+            await JS.InvokeVoidAsync("travelMap.setDestinationSelection", false);
+        }
         await RefreshMapDisplayAsync();
     }
 
     private async Task SetLegEditingAsync(RouteLeg leg, bool isEditing)
     {
         leg.IsEditing = isEditing;
+        if (isEditing)
+            statusMessage = null;
         await RefreshMapDisplayAsync();
     }
 
     private Task RefreshMapDisplayAsync()
     {
         return JS.InvokeVoidAsync("travelMap.refresh", Model).AsTask();
+    }
+
+    private async Task ToggleMapSelection()
+    {
+        if (isMapSelectionEnabled)
+        {
+            isMapSelectionEnabled = false;
+            await JS.InvokeVoidAsync("travelMap.setDestinationSelection", false);
+            return;
+        }
+
+        var lastLeg = Model.Legs.LastOrDefault();
+        if (lastLeg is null || lastLeg.IsValid())
+        {
+            await AddLeg();
+            if (!string.IsNullOrWhiteSpace(errorMessage))
+                return;
+        }
+
+        isMapSelectionEnabled = true;
+        statusMessage = "Click the map to set the destination of the last leg.";
+        await JS.InvokeVoidAsync("travelMap.setDestinationSelection", true);
+    }
+
+    [JSInvokable]
+    public async Task OnMapPointSelected(double latitude, double longitude)
+    {
+        if (!isMapSelectionEnabled || !double.IsFinite(latitude) || latitude is < -90 or > 90
+            || !double.IsFinite(longitude) || longitude is < -180 or > 180)
+        {
+            return;
+        }
+
+        var leg = Model.Legs.LastOrDefault();
+        if (leg is null)
+            return;
+
+        var point = leg.To;
+        point.ResetGeo();
+        point.Latitude = latitude;
+        point.Longitude = longitude;
+        point.Place = FormattableString.Invariant($"{latitude:F5}, {longitude:F5}");
+        point.Id = point.Place;
+        leg.DistanceKm = leg.CalculateDistanceKm();
+        isMapSelectionEnabled = false;
+        errorMessage = null;
+        statusMessage = "Looking up the selected location…";
+        await JS.InvokeVoidAsync("travelMap.setDestinationSelection", false);
+
+        try
+        {
+            var place = await NominatimClient.ReverseResolvePlaceAsync(latitude, longitude);
+            if (place is not null)
+            {
+                point.Place = place.Name;
+                point.Id = place.Name;
+                point.FoundName = place.Name;
+                point.Country = place.Country;
+            }
+
+            statusMessage = "Destination selected. Save the route to keep your changes.";
+        }
+        catch (Exception exception) when (exception is HttpRequestException or System.Text.Json.JsonException)
+        {
+            statusMessage = "Coordinates selected, but the place name could not be looked up. You can still edit the name.";
+            errorMessage = $"Place lookup failed: {exception.Message}";
+        }
+
+        leg.DistanceKm = leg.CalculateDistanceKm();
+        await RefreshMapDisplayAsync();
+        await JS.InvokeVoidAsync("travelMap.focusPoint", latitude, longitude);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnPlaceInputAsync(RoutePoint point, ChangeEventArgs args)
+    {
+        point.Place = args.Value?.ToString() ?? string.Empty;
+        point.ResetGeo();
+        UpdateLegDistances();
+        suggestionPoint = point;
+        placeSuggestions = [];
+        errorMessage = null;
+        statusMessage = null;
+
+        placeSearchCts?.Cancel();
+        placeSearchCts?.Dispose();
+        var searchCts = new CancellationTokenSource();
+        placeSearchCts = searchCts;
+
+        if (point.Place.Trim().Length < 3)
+        {
+            await RefreshMapDisplayAsync();
+            return;
+        }
+
+        await RefreshMapDisplayAsync();
+
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(500), searchCts.Token);
+            var suggestions = await NominatimClient.SearchPlacesAsync(point.Place.Trim(), ct: searchCts.Token);
+            if (searchCts.IsCancellationRequested || !ReferenceEquals(suggestionPoint, point))
+                return;
+
+            placeSuggestions = suggestions;
+            if (suggestions.Count == 0)
+                statusMessage = "No matching places found. Try another spelling or select a point on the map.";
+            await RefreshMapDisplayAsync();
+        }
+        catch (OperationCanceledException) when (searchCts.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is HttpRequestException or System.Text.Json.JsonException)
+        {
+            if (!searchCts.IsCancellationRequested)
+                errorMessage = $"Place search failed: {exception.Message}";
+        }
+    }
+
+    private IReadOnlyList<GeoPoint> GetPlaceSuggestions(RoutePoint point) =>
+        ReferenceEquals(suggestionPoint, point) ? placeSuggestions : [];
+
+    private async Task SelectPlaceAsync(RoutePoint point, GeoPoint place)
+    {
+        placeSearchCts?.Cancel();
+        point.Place = place.Name;
+        point.Id = place.Name;
+        point.FoundName = place.Name;
+        point.Country = place.Country;
+        point.Latitude = place.Latitude;
+        point.Longitude = place.Longitude;
+        suggestionPoint = null;
+        placeSuggestions = [];
+        errorMessage = null;
+        statusMessage = "Place selected. Save the route to keep your changes.";
+        UpdateLegDistances();
+        await RefreshMapDisplayAsync();
+        await JS.InvokeVoidAsync("travelMap.focusPoint", place.Latitude, place.Longitude);
+    }
+
+    private async Task ResolveTypedPlaceAsync(RoutePoint point)
+    {
+        placeSearchCts?.Cancel();
+        if (string.IsNullOrWhiteSpace(point.Place)
+            || point.Place.Trim().Length < 3
+            || string.Equals(point.Place, point.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            var place = await NominatimClient.ResolvePlaceAsync(point.Place.Trim());
+            if (place is null)
+            {
+                errorMessage = $"No matching place found for “{point.Place}”. Select a suggestion or choose it on the map.";
+                return;
+            }
+
+            point.Id = point.Place;
+            point.FoundName = place.Name;
+            point.Country = place.Country;
+            point.Latitude = place.Latitude;
+            point.Longitude = place.Longitude;
+            errorMessage = null;
+            statusMessage = "Place found. Save the route to keep your changes.";
+            UpdateLegDistances();
+            await RefreshMapDisplayAsync();
+            await JS.InvokeVoidAsync("travelMap.focusPoint", place.Latitude, place.Longitude);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or System.Text.Json.JsonException)
+        {
+            errorMessage = $"Place lookup failed: {exception.Message}";
+        }
+    }
+
+    private void UpdateLegDistances()
+    {
+        foreach (var leg in Model.Legs)
+            leg.DistanceKm = leg.CalculateDistanceKm();
+    }
+
+    private static string FormatTravelDates(RouteLeg leg)
+    {
+        var start = leg.StartDate?.ToString("d MMM yyyy");
+        var end = leg.EndDate?.ToString("d MMM yyyy");
+        return start is not null && end is not null
+            ? $"{start} – {end}"
+            : start ?? end ?? string.Empty;
     }
 
     private async Task RefreshMap()
@@ -250,12 +547,26 @@
 
         if (legsToUpdate.Count > 0 && legsToUpdate.All(leg => leg.IsValid()))
         {
+            if (legsToUpdate.Any(leg => leg.StartDate is not null
+                && leg.EndDate is not null
+                && leg.StartDate > leg.EndDate))
+            {
+                errorMessage = "A travel end date cannot be before its start date.";
+                return;
+            }
+
             if (hasOpenLastLeg)
             {
+                if (isMapSelectionEnabled)
+                {
+                    isMapSelectionEnabled = false;
+                    await JS.InvokeVoidAsync("travelMap.setDestinationSelection", false);
+                }
+
                 Model.Legs.RemoveAt(Model.Legs.Count - 1);
             }
 
-            // save Model to database or perform any other necessary actions here
+            UpdateLegDistances();
             Model.UpdatedUtc = DateTime.UtcNow;
             foreach(var leg in Model.Legs.Where(x=>x.IsEditing))
             {
@@ -263,13 +574,15 @@
             }
             album.TripGraph = Model;
             Catalog.Update(album);
+            errorMessage = null;
+            statusMessage = "Route saved.";
             await JS.InvokeVoidAsync(
            "travelMap.refresh",
            Model);
         }
         else
         {
-            await JS.InvokeVoidAsync("alert", "Some points are missing geo-coordinates. Please check the input fields.");
+            errorMessage = "Choose a place for both ends of each completed leg. The open last leg is kept for editing.";
             return;
         }
 
@@ -302,35 +615,22 @@
         };
     }
 
-    private async Task OnPlaceChanged(RoutePoint point)
+    public async ValueTask DisposeAsync()
     {
-        if (point.Place == null || point.Place.Length < 3)
+        placeSearchCts?.Cancel();
+        placeSearchCts?.Dispose();
+        if (mapCallback is not null)
         {
-            point.ResetGeo();
-            await RefreshMapDisplayAsync();
-            return;
+            try
+            {
+                await JS.InvokeVoidAsync("travelMap.setDestinationSelection", false);
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+
+            mapCallback.Dispose();
         }
-        ;
-
-        if (point.Place == point.Id)
-        {
-            return;
-        }
-
-        var result = await NominatimClient.ResolvePlaceAsync(point.Place);
-        point.ResetGeo();
-        if (result != null)
-        {
-            point.Id = point.Place;
-            point.FoundName = result.Name;
-            point.Country = result.Country;
-            point.Latitude = result.Latitude;
-            point.Longitude = result.Longitude;
-
-        }
-
-        await RefreshMapDisplayAsync();
-        StateHasChanged();
     }
 
 }
