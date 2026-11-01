@@ -1,0 +1,67 @@
+@page "/telemetry"
+@rendermode InteractiveServer
+@attribute [Authorize]
+
+@using Microsoft.AspNetCore.Authorization
+@using PhotoIt.Data
+@using PhotoIt.ServiceDefaults
+@inject AlbumCatalog Catalog
+
+<PageTitle>Telemetry dashboard</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-1">Telemetry dashboard</h1>
+        <p class="text-muted mb-0">Application activity for today (UTC).</p>
+    </div>
+    <button class="btn btn-outline-primary" @onclick="Refresh">Refresh</button>
+</div>
+
+<div class="row row-cols-1 row-cols-md-3 g-3">
+    <div class="col">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Albums created today</h2>
+                <p class="display-6 mb-0">@albumsCreatedToday</p>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Photos and videos uploaded today</h2>
+                <p class="display-6 mb-0">@photosUploadedToday</p>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Upload failures today</h2>
+                <p class="display-6 mb-0">@PhotoItTelemetry.GetPhotoUploadFailuresToday()</p>
+                <small class="text-muted">Failure count is held in memory and resets when the app restarts.</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<p class="small text-muted mt-3">
+    Request duration, traces, metrics, and structured logs are exported when <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> is configured.
+</p>
+
+@code {
+    private int albumsCreatedToday;
+    private int photosUploadedToday;
+
+    protected override void OnInitialized() => Refresh();
+
+    private void Refresh()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var albums = Catalog.List();
+        albumsCreatedToday = albums.Count(album => DateOnly.FromDateTime(album.CreatedUtc) == today);
+        photosUploadedToday = albums
+            .SelectMany(album => Catalog.ListPhotos(album.Id))
+            .Count(photo => DateOnly.FromDateTime(photo.UploadedUtc) == today);
+    }
+}

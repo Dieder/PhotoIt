@@ -5,9 +5,11 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Web
 @using PhotoIt.Core.Services
+@using PhotoIt.ServiceDefaults
 @inject AlbumCatalog Catalog
 @inject NominatimClient NominatimClient
 @inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<TravelRoute> Logger
 @attribute [Authorize]
 
 @inject IJSRuntime JS
@@ -539,6 +541,8 @@
 
     private async Task RefreshMap()
     {
+        using var activity = PhotoItTelemetry.ActivitySource.StartActivity("album.route.save");
+        activity?.SetTag("album.id", AlbumId);
         var hasOpenLastLeg = Model.Legs.Count > 0
             && string.IsNullOrWhiteSpace(Model.Legs[^1].To.Place);
         var legsToUpdate = Model.Legs
@@ -573,9 +577,18 @@
                 leg.IsEditing = false;
             }
             album.TripGraph = Model;
-            Catalog.Update(album);
+            if (!Catalog.Update(album))
+            {
+                PhotoItTelemetry.RecordAlbumSave(false);
+                errorMessage = "The route could not be saved.";
+                Logger.LogWarning("Album route save failed. AlbumId: {AlbumId}", AlbumId);
+                return;
+            }
+
+            PhotoItTelemetry.RecordAlbumSave(true);
             errorMessage = null;
             statusMessage = "Route saved.";
+            Logger.LogInformation("Album route saved. AlbumId: {AlbumId}", AlbumId);
             await JS.InvokeVoidAsync(
            "travelMap.refresh",
            Model);
@@ -583,6 +596,8 @@
         else
         {
             errorMessage = "Choose a place for both ends of each completed leg. The open last leg is kept for editing.";
+            PhotoItTelemetry.RecordAlbumSave(false);
+            Logger.LogWarning("Album route save rejected because a completed leg has an invalid point. AlbumId: {AlbumId}", AlbumId);
             return;
         }
 

@@ -1,9 +1,11 @@
 ﻿@page "/albums/{Id}/theme"
 @using PhotoIt.Data
+@using PhotoIt.ServiceDefaults
 @using System.IO
 @rendermode InteractiveServer
 @inject AlbumCatalog Catalog
 @inject NavigationManager NavigationManager
+@inject ILogger<AlbumTheme> Logger
 @using Microsoft.AspNetCore.Hosting
 @inject IWebHostEnvironment Environment
 
@@ -220,8 +222,7 @@
             ImagePath = null
         };
         
-        Catalog.UpdateAlbumBackground(Id, Value);
-        NavigationManager.NavigateTo($"/albums/{Id}");
+        SaveThemeAndNavigate();
     }
 
     private async Task SelectImage(string url)
@@ -232,8 +233,27 @@
             ImagePath = url
         };
 
-        Catalog.UpdateAlbumBackground(Id, Value);
-        NavigationManager.NavigateTo($"/albums/{Id}");
+        SaveThemeAndNavigate();
+    }
+
+    private void SaveThemeAndNavigate()
+    {
+        using var activity = PhotoItTelemetry.ActivitySource.StartActivity("album.theme.save");
+        activity?.SetTag("album.id", Id);
+        try
+        {
+            Catalog.UpdateAlbumBackground(Id, Value);
+            PhotoItTelemetry.RecordAlbumSave(true);
+            Logger.LogInformation("Album theme saved. AlbumId: {AlbumId}", Id);
+            NavigationManager.NavigateTo($"/albums/{Id}");
+        }
+        catch (Exception exception)
+        {
+            PhotoItTelemetry.RecordAlbumSave(false);
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Album theme save failed");
+            Logger.LogError(exception, "Album theme save failed. AlbumId: {AlbumId}", Id);
+            throw;
+        }
     }
 
     private string PreviewStyle =>

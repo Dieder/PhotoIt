@@ -1,10 +1,12 @@
 @page "/albums"
 @rendermode InteractiveServer
 @using PhotoIt.Data
+@using PhotoIt.ServiceDefaults
 @inject AlbumCatalog Catalog
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
+@inject ILogger<Albums> Logger
 @using PhotoIt.Web.Components
 
 <PageTitle>Albums</PageTitle>
@@ -97,7 +99,14 @@ else
 
             if (isAuthenticated && currentUserId == album.UserId && layout is not null)
             {
+                var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
                 Catalog.EnsureShareLink(album);
+                if (shareLinkCreated)
+                {
+                    PhotoItTelemetry.RecordShareCreated();
+                    Logger.LogInformation("Album share link created. AlbumId: {AlbumId}", album.Id);
+                }
+
                 shareUrls[album.Id] = $"{Navigation.BaseUri.TrimEnd('/')}/sharedalbum/{album.ShareSlug}/{album.ShareSeed}";
             }
         }

@@ -3,6 +3,7 @@
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Identity
+@using PhotoIt.ServiceDefaults
 
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
@@ -98,8 +99,11 @@
 
     public async Task LoginUser()
     {
+        using var activity = PhotoItTelemetry.ActivitySource.StartActivity("auth.login");
         if (!string.IsNullOrEmpty(Input.Passkey?.Error))
         {
+            PhotoItTelemetry.RecordLoginAttempt("failure");
+            Logger.LogWarning("Login failed during passkey authentication.");
             errorMessage = $"Error: {Input.Passkey.Error}";
             return;
         }
@@ -125,23 +129,32 @@
 
         if (result.Succeeded)
         {
+            PhotoItTelemetry.RecordLoginAttempt("success");
+            activity?.SetTag("auth.result", "success");
             Logger.LogInformation("User logged in.");
             ReturnUrl ??= "/";
             RedirectManager.RedirectTo(ReturnUrl);
         }
         else if (result.RequiresTwoFactor)
         {
+            PhotoItTelemetry.RecordLoginAttempt("two_factor");
+            activity?.SetTag("auth.result", "two_factor");
             RedirectManager.RedirectTo(
                 "Account/LoginWith2fa",
                 new() { ["returnUrl"] = ReturnUrl, ["rememberMe"] = Input.RememberMe });
         }
         else if (result.IsLockedOut)
         {
+            PhotoItTelemetry.RecordLoginAttempt("locked_out");
+            activity?.SetTag("auth.result", "locked_out");
             Logger.LogWarning("User account locked out.");
             RedirectManager.RedirectTo("Account/Lockout");
         }
         else
         {
+            PhotoItTelemetry.RecordLoginAttempt("failure");
+            activity?.SetTag("auth.result", "failure");
+            Logger.LogWarning("User login failed.");
             errorMessage = "Error: Invalid login attempt.";
         }
     }
