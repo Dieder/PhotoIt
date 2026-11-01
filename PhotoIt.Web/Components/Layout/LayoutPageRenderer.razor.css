@@ -205,6 +205,14 @@ article {
     will-change: transform;
 }
 
+.slot-photo video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
+}
+
 .slot-photo img.photo-fit-cover {
     object-fit: cover;
 }

@@ -77,6 +77,13 @@ public sealed class PhotoIndexBackgroundService : BackgroundService
                     continue;
                 }
 
+                if (PhotoType.IsVideo(photo))
+                {
+                    _logger.LogInformation("Skipping video {PhotoId} during photo indexing.", photo.Id);
+                    _queue.Complete(request.PhotoId);
+                    continue;
+                }
+
                 try
                 {
                     await _orchestrator.IndexPhotoAsync(photo, _catalog, _storage, stoppingToken);
