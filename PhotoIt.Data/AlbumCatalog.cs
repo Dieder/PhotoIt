@@ -1,47 +1,35 @@
-using PhotoIt.Data;
-using LiteDB;
 using System.Security.Cryptography;
+using Microsoft.EntityFrameworkCore;
 
 namespace PhotoIt.Data;
 
-public sealed class AlbumCatalog : IDisposable
+public sealed class AlbumCatalog
 {
-    private readonly LiteDatabase _database;
-    private readonly ILiteCollection<Album> _albums;
-    private readonly ILiteCollection<AlbumPhoto> _photos;
-    private readonly ILiteCollection<ViewableAlbumLayout> _layouts;
+    private readonly IPhotoItContextFactory _contextFactory;
 
-    public AlbumCatalog(string databasePath)
+    public AlbumCatalog(IPhotoItContextFactory contextFactory)
     {
-        var directory = Path.GetDirectoryName(Path.GetFullPath(databasePath));
-        if (!string.IsNullOrWhiteSpace(directory))
-            Directory.CreateDirectory(directory);
-
-        _database = new LiteDatabase(databasePath);
-        _albums = _database.GetCollection<Album>("albums");
-        _photos = _database.GetCollection<AlbumPhoto>("albumPhotos");
-        _layouts = _database.GetCollection<ViewableAlbumLayout>("viewableAlbumLayouts");
-        _albums.EnsureIndex(album => album.ImageFolderName, unique: true);
-        _albums.EnsureIndex(album => album.Name);
-        _photos.EnsureIndex(photo => photo.AlbumId);
-        _layouts.EnsureIndex(layout => layout.AlbumId, unique: true);
+        _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
     }
 
     public IReadOnlyList<Album> List()
     {
-        return _albums.Query()
+        using var db = _contextFactory.CreateDbContext();
+        return db.Set<Album>().AsNoTracking()
             .OrderByDescending(album => album.UpdatedUtc)
             .ToList();
     }
 
     public Album? Get(string id)
     {
-        return _albums.FindById(id);
+        using var db = _contextFactory.CreateDbContext();
+        return db.Set<Album>().AsNoTracking().FirstOrDefault(album => album.Id == id);
     }
 
     public string[] PhotoIds(string albumId)
     {
-        return _photos.Query()
+        using var db = _contextFactory.CreateDbContext();
+        return db.Set<AlbumPhoto>().AsNoTracking()
             .Where(photo => photo.AlbumId == albumId)
             .Select(photo => photo.Id)
             .ToArray();
@@ -53,7 +41,9 @@ public sealed class AlbumCatalog : IDisposable
         if (string.IsNullOrWhiteSpace(normalizedSlug) || seed <= 0)
             return null;
 
-        return _albums.FindOne(album => album.ShareSlug == normalizedSlug && album.ShareSeed == seed);
+        using var db = _contextFactory.CreateDbContext();
+        return db.Set<Album>().AsNoTracking()
+            .FirstOrDefault(album => album.ShareSlug == normalizedSlug && album.ShareSeed == seed);
     }
 
     public void EnsureShareLink(Album album)
@@ -65,21 +55,27 @@ public sealed class AlbumCatalog : IDisposable
             return;
 
         album.ShareSlug = slug;
+        using var db = _contextFactory.CreateDbContext();
         do
         {
             album.ShareSeed = RandomNumberGenerator.GetInt32(100_000, 1_000_000);
         }
-        while (_albums.Exists(candidate => candidate.Id != album.Id && candidate.ShareSlug == album.ShareSlug && candidate.ShareSeed == album.ShareSeed));
+        while (db.Set<Album>().Any(candidate =>
+                   candidate.Id != album.Id &&
+                   candidate.ShareSlug == album.ShareSlug &&
+                   candidate.ShareSeed == album.ShareSeed));
 
-        _albums.Update(album);
+        db.Set<Album>().Update(album);
+        db.SaveChanges();
     }
 
     public bool ImageFolderNameExists(string imageFolderName, string? excludingId = null)
     {
         var normalizedName = NormalizeFolderName(imageFolderName);
-        return _albums.FindAll().Any(album =>
-            string.Equals(album.ImageFolderName, normalizedName, StringComparison.Ordinal) &&
-            !string.Equals(album.Id, excludingId, StringComparison.OrdinalIgnoreCase));
+        using var db = _contextFactory.CreateDbContext();
+        return db.Set<Album>().Any(album =>
+            album.ImageFolderName == normalizedName &&
+            (excludingId == null || album.Id != excludingId));
     }
 
     public void Create(Album album)
@@ -89,7 +85,9 @@ public sealed class AlbumCatalog : IDisposable
         album.CreatedUtc = DateTime.UtcNow;
         album.UpdatedUtc = album.CreatedUtc;
         album.ImageFolderName = $"ALBUM-{album.Id.ToUpperInvariant()}";
-        _albums.Insert(album);
+        using var db = _contextFactory.CreateDbContext();
+        db.Set<Album>().Add(album);
+        db.SaveChanges();
     }
 
     public bool Update(Album album)
@@ -97,37 +95,50 @@ public sealed class AlbumCatalog : IDisposable
         ArgumentNullException.ThrowIfNull(album);
         album.ImageFolderName = NormalizeFolderName(album.ImageFolderName);
         album.UpdatedUtc = DateTime.UtcNow;
-        return _albums.Update(album);
+        using var db = _contextFactory.CreateDbContext();
+        if (!db.Set<Album>().Any(existing => existing.Id == album.Id))
+            return false;
+
+        db.Set<Album>().Update(album);
+        db.SaveChanges();
+        return true;
     }
 
     public bool Delete(string id)
     {
-        _database.BeginTrans();
-        try
-        {
-            _photos.DeleteMany(photo => photo.AlbumId == id);
-            _layouts.Delete(id);
-            var deleted = _albums.Delete(id);
-            _database.Commit();
-            return deleted;
-        }
-        catch
-        {
-            _database.Rollback();
-            throw;
-        }
+        using var db = _contextFactory.CreateDbContext();
+        using var transaction = db.Database.BeginTransaction();
+        var album = db.Set<Album>().FirstOrDefault(candidate => candidate.Id == id);
+        if (album is null)
+            return false;
+
+        db.Set<AlbumPhoto>().Where(photo => photo.AlbumId == id).ExecuteDelete();
+        db.Set<ViewableAlbumLayout>().Where(layout => layout.AlbumId == id).ExecuteDelete();
+        db.Remove(album);
+        db.SaveChanges();
+        transaction.Commit();
+        return true;
     }
 
     public IReadOnlyList<AlbumPhoto> ListPhotos(string albumId)
     {
-        var photos = _photos.Find(photo => photo.AlbumId == albumId)
-            .OrderByDescending(photo => photo.DateTakenUtc.HasValue
-                ? photo.DateTakenUtc.Value.ToLocalTime()
-                : photo.UploadedUtc.ToLocalTime())
+        using var db = _contextFactory.CreateDbContext();
+        var photos = db.Set<AlbumPhoto>().Where(photo => photo.AlbumId == albumId)
             .ToList();
+        photos = photos.OrderByDescending(photo => photo.DateTakenUtc ?? photo.UploadedUtc).ToList();
 
+        var changed = false;
         foreach (var photo in photos)
-            NormalizeLegacyAnalysis(photo);
+        {
+            if (NormalizeLegacyAnalysis(photo))
+            {
+                db.Update(photo);
+                changed = true;
+            }
+        }
+
+        if (changed)
+            db.SaveChanges();
 
         return photos;
     }
@@ -149,41 +160,60 @@ public sealed class AlbumCatalog : IDisposable
     public void AddPhoto(AlbumPhoto photo)
     {
         ArgumentNullException.ThrowIfNull(photo);
-        _photos.Insert(photo);
+        using var db = _contextFactory.CreateDbContext();
+        db.Set<AlbumPhoto>().Add(photo);
+        db.SaveChanges();
     }
 
     public AlbumPhoto? GetPhoto(string albumId, string photoId)
     {
-        var photo = _photos.FindOne(photo => photo.AlbumId == albumId && photo.Id == photoId);
-        if (photo is not null)
-            NormalizeLegacyAnalysis(photo);
+        using var db = _contextFactory.CreateDbContext();
+        var photo = db.Set<AlbumPhoto>().FirstOrDefault(photo =>
+            photo.AlbumId == albumId && photo.Id == photoId);
+        if (photo is not null && NormalizeLegacyAnalysis(photo))
+            db.SaveChanges();
         return photo;
     }
 
     public bool DeletePhoto(string id)
     {
-        return _photos.Delete(id);
+        using var db = _contextFactory.CreateDbContext();
+        var photo = db.Set<AlbumPhoto>().Find(id);
+        if (photo is null)
+            return false;
+
+        db.Remove(photo);
+        return db.SaveChanges() > 0;
     }
 
     public bool UpdatePhoto(AlbumPhoto photo)
     {
         ArgumentNullException.ThrowIfNull(photo);
-        return _photos.Update(photo);
+        using var db = _contextFactory.CreateDbContext();
+        if (!db.Set<AlbumPhoto>().Any(existing => existing.Id == photo.Id))
+            return false;
+
+        db.Set<AlbumPhoto>().Update(photo);
+        db.SaveChanges();
+        return true;
     }
 
     public void Touch(string albumId)
     {
-        var album = Get(albumId);
+        using var db = _contextFactory.CreateDbContext();
+        var album = db.Set<Album>().Find(albumId);
         if (album is null)
             return;
 
         album.UpdatedUtc = DateTime.UtcNow;
-        _albums.Update(album);
+        db.SaveChanges();
     }
 
     public ViewableAlbumLayout? GetLayout(string albumId)
     {
-        var layout = _layouts.FindById(albumId);
+        using var db = _contextFactory.CreateDbContext();
+        var layout = db.Set<ViewableAlbumLayout>().AsNoTracking()
+            .FirstOrDefault(layout => layout.AlbumId == albumId);
         if (layout is not null)
             NormalizeLayout(layout);
 
@@ -192,7 +222,8 @@ public sealed class AlbumCatalog : IDisposable
 
     public bool HasLayout(string albumId)
     {
-        return _layouts.Exists(layout => layout.AlbumId == albumId);
+        using var db = _contextFactory.CreateDbContext();
+        return db.Set<ViewableAlbumLayout>().Any(layout => layout.AlbumId == albumId);
     }
 
     public void SaveLayout(ViewableAlbumLayout layout)
@@ -203,18 +234,27 @@ public sealed class AlbumCatalog : IDisposable
 
         NormalizeLayout(layout);
         layout.UpdatedUtc = DateTime.UtcNow;
-        _layouts.Upsert(layout);
-        Touch(layout.AlbumId);
+        using var db = _contextFactory.CreateDbContext();
+        if (db.Set<ViewableAlbumLayout>().Any(existing => existing.AlbumId == layout.AlbumId))
+            db.Set<ViewableAlbumLayout>().Update(layout);
+        else
+            db.Set<ViewableAlbumLayout>().Add(layout);
+
+        var album = db.Set<Album>().Find(layout.AlbumId);
+        if (album is not null)
+            album.UpdatedUtc = DateTime.UtcNow;
+        db.SaveChanges();
     }
 
     public bool DeleteLayout(string albumId)
     {
-        return _layouts.Delete(albumId);
-    }
+        using var db = _contextFactory.CreateDbContext();
+        var layout = db.Set<ViewableAlbumLayout>().Find(albumId);
+        if (layout is null)
+            return false;
 
-    public void Dispose()
-    {
-        _database.Dispose();
+        db.Remove(layout);
+        return db.SaveChanges() > 0;
     }
 
     private static string NormalizeFolderName(string value)
@@ -226,14 +266,16 @@ public sealed class AlbumCatalog : IDisposable
     {
         ArgumentNullException.ThrowIfNull(id);
         ArgumentNullException.ThrowIfNull(fill);
-        var album = Get(id);
+        using var db = _contextFactory.CreateDbContext();
+        var album = db.Set<Album>().Find(id);
         if (album is null)
             throw new ArgumentException("Album not found.", nameof(id));
         album.BackGroundFill = fill;
         album.UpdatedUtc = DateTime.UtcNow;
 
-        Update(album);
+        db.SaveChanges();
     }
+
     public static string FormatShareSlug(string value)
     {
         var source = value.Trim();
@@ -301,15 +343,15 @@ public sealed class AlbumCatalog : IDisposable
         }
     }
 
-    private void NormalizeLegacyAnalysis(AlbumPhoto photo)
+    private static bool NormalizeLegacyAnalysis(AlbumPhoto photo)
     {
         if (photo.Tags.Count > 0 || string.IsNullOrWhiteSpace(photo.Description))
-            return;
+            return false;
 
         var start = photo.Description.IndexOf('{');
         var end = photo.Description.LastIndexOf('}');
         if (start < 0 || end <= start)
-            return;
+            return false;
 
         try
         {
@@ -318,7 +360,7 @@ public sealed class AlbumCatalog : IDisposable
             if (!root.TryGetProperty("description", out var descriptionElement) ||
                 !root.TryGetProperty("tags", out var tagsElement) ||
                 tagsElement.ValueKind != System.Text.Json.JsonValueKind.Array)
-                return;
+                return false;
 
             photo.Description = descriptionElement.GetString() ?? string.Empty;
             photo.Tags = tagsElement.EnumerateArray()
@@ -327,11 +369,12 @@ public sealed class AlbumCatalog : IDisposable
                 .Cast<string>()
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            _photos.Update(photo);
+            return true;
         }
         catch (System.Text.Json.JsonException)
         {
             // Leave malformed legacy analysis untouched for manual re-indexing.
+            return false;
         }
     }
 }

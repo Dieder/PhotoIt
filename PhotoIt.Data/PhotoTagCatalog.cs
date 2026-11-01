@@ -1,10 +1,9 @@
-using LiteDB;
+using Microsoft.EntityFrameworkCore;
 
 namespace PhotoIt.Data;
 
 public sealed class PhotoTagRecord
 {
-    [BsonId]
     public string Id { get; set; } = string.Empty;
     public string Path { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
@@ -14,45 +13,42 @@ public sealed class PhotoTagRecord
     public DateTime IndexedUtc { get; set; }
 }
 
-public sealed class PhotoTagCatalog : IDisposable
+public sealed class PhotoTagCatalog
 {
-    private readonly LiteDatabase _database;
-    private readonly ILiteCollection<PhotoTagRecord> _photos;
+    private readonly IPhotoItContextFactory _contextFactory;
 
-    public PhotoTagCatalog(string databasePath)
+    public PhotoTagCatalog(IPhotoItContextFactory contextFactory)
     {
-        if (string.IsNullOrWhiteSpace(databasePath))
-            throw new ArgumentException("A database path is required.", nameof(databasePath));
-
-        var directory = Path.GetDirectoryName(Path.GetFullPath(databasePath));
-        if (!string.IsNullOrEmpty(directory))
-            Directory.CreateDirectory(directory);
-
-        _database = new LiteDatabase(databasePath);
-        _photos = _database.GetCollection<PhotoTagRecord>("photos");
-        _photos.EnsureIndex(photo => photo.Path, unique: true);
+        _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
     }
 
     public void Upsert(PhotoTagRecord photo)
     {
         ArgumentNullException.ThrowIfNull(photo);
         photo.Id = CreateId(photo.Path);
-        _photos.Upsert(photo);
+        using var db = _contextFactory.CreateDbContext();
+        var existing = db.Set<PhotoTagRecord>().Find(photo.Id);
+        if (existing is null)
+            db.Set<PhotoTagRecord>().Add(photo);
+        else
+        {
+            db.Entry(existing).CurrentValues.SetValues(photo);
+        }
+
+        db.SaveChanges();
     }
 
     public PhotoTagRecord? FindByPath(string path)
     {
-        return _photos.FindById(CreateId(path));
+        var id = CreateId(path);
+        using var db = _contextFactory.CreateDbContext();
+        return db.Set<PhotoTagRecord>().AsNoTracking().FirstOrDefault(photo => photo.Id == id);
     }
 
     public IEnumerable<PhotoTagRecord> GetAll()
     {
-        return _photos.FindAll().ToArray();
-    }
-
-    public void Dispose()
-    {
-        _database.Dispose();
+        using var db = _contextFactory.CreateDbContext();
+        return db.Set<PhotoTagRecord>().AsNoTracking().ToArray();
     }
 
     private static string CreateId(string path)

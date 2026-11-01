@@ -1,10 +1,7 @@
-using LiteDB;
-
 namespace PhotoIt.Data;
 
 public sealed class AlbumPhoto
 {
-    [BsonId]
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
     public string UserId { get; set; } = string.Empty;  

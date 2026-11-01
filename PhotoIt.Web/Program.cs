@@ -1,5 +1,4 @@
 using AiFoundryLocal;
-using LiteDB;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -13,9 +12,10 @@ using Microsoft.Extensions.Http;
 using ImageMagick;
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString = builder.Configuration.GetConnectionString("AlbumWebContext") ?? throw new InvalidOperationException("Connection string 'AlbumWebContext' not found.");
+var connectionString = builder.Configuration.GetConnectionString("AlbumWebContext")
+    ?? throw new InvalidOperationException("Connection string 'AlbumWebContext' not found. Configure it through environment variables or user secrets.");
 
-builder.Services.AddDbContext<AlbumWebContext>(options => options.UseSqlite(connectionString));
+builder.Services.AddDbContextFactory<AlbumWebContext>(options => options.UseNpgsql(connectionString));
 
 // Add service defaults & Aspire client integrations.
 builder.AddServiceDefaults();
@@ -24,10 +24,9 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddOutputCache();
-builder.Services.AddSingleton<AlbumCatalog>(_ =>
-    new AlbumCatalog(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "albums.db")));
-builder.Services.AddSingleton<PhotoTagCatalog>(_ =>
-    new PhotoTagCatalog(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "photo-tags.db")));
+builder.Services.AddSingleton<IPhotoItContextFactory, AlbumWebContextFactory>();
+builder.Services.AddSingleton<AlbumCatalog>();
+builder.Services.AddSingleton<PhotoTagCatalog>();
 builder.Services.AddSingleton<PhotoThumbnailService>();
 
 builder.Services.AddHttpClient<NominatimClient>();
@@ -196,8 +195,8 @@ app.MapAdditionalIdentityEndpoints();;
 
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AlbumWebContext>();
-
+    var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AlbumWebContext>>();
+    using var db = dbFactory.CreateDbContext();
     db.Database.Migrate();
 }
 

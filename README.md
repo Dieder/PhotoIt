@@ -25,7 +25,7 @@ The solution is split into these main projects:
 | Project | Responsibility |
 | --- | --- |
 | `PhotoIt.Web` | Interactive Server Blazor UI, Identity, album/photo workflows, HTTP endpoints, and dependency registration. |
-| `PhotoIt.Data` | Album and layout models, LiteDB catalogs, photo metadata extraction, and Azure Blob Storage integration. |
+| `PhotoIt.Data` | Album and layout models, PostgreSQL-backed catalogs, photo metadata extraction, and Azure Blob Storage integration. |
 | `CleanCode.AiOrgestation` | Coordinates vision analysis with album data and runs the background photo-indexing queue. |
 | `AiFoundryLocal` | Local Phi-3 Vision ONNX Runtime GenAI inference and local-file indexing support. |
 | `PhotoIt.Core` | Shared route/geolocation services, including the Nominatim client. |
@@ -33,7 +33,7 @@ The solution is split into these main projects:
 | `PhotoIt.AppHost` | .NET Aspire host that launches the web app and API service together. |
 | `CleanCode.ApiService` | Separate minimal API project; its current endpoints are a sample root status and weather forecast, not the album or tagging API. |
 
-The web app uses SQLite via Entity Framework Core for Identity (`AlbumWebContext.db`) and LiteDB for album, photo, and layout data (`PhotoIt.Web/App_Data/albums.db`). The local file-tag catalog is configured at `PhotoIt.Web/App_Data/photo-tags.db`. Original album images are stored in Azure Blob Storage. Photo uploads enqueue work for a hosted service, which calls `PhotoVisionOrchestrator` and persists the resulting description and tags.
+The web app stores Identity, albums, photo metadata, layouts, and local file-tag records in one PostgreSQL database through Entity Framework Core. Original album images and thumbnails remain in the configured Azure Blob Storage container. Photo uploads enqueue work for a hosted service, which calls `PhotoVisionOrchestrator` and persists the resulting description and tags. Existing SQLite and LiteDB files are not imported; configure an empty PostgreSQL database for this version.
 
 ## Requirements
 
@@ -48,7 +48,7 @@ The web app reads settings from `PhotoIt.Web/appsettings.json`, environment vari
 
 | Setting | Required | Purpose |
 | --- | --- | --- |
-| `ConnectionStrings:AlbumWebContext` | Yes | SQLite connection string for Identity. Defaults to `Data Source=AlbumWebContext.db`. |
+| `ConnectionStrings:AlbumWebContext` | Yes | PostgreSQL connection string used by Identity and all catalog data. There is no checked-in default. |
 | `AzureStorage:AccountName` | Yes, unless derived from `AccountUri` | Azure Storage account name. |
 | `AzureStorage:AccountUri` | No | Blob service URI; if omitted, it is built from the account name. The account name can also be derived from this URI. |
 | `AzureStorage:ContainerName` | No | Blob container for photos. Defaults to `photos`. |
@@ -58,12 +58,12 @@ The web app reads settings from `PhotoIt.Web/appsettings.json`, environment vari
 | `VisionModel:ContextLength` | No | Model context length; defaults to `4096`. |
 | `VisionModel:LocalPhotoDirectory` | No | Root directory used by the local-file indexer; defaults to a `photos` directory under the web app. |
 
-Example (replace the storage account and model path with values for your environment):
+Example (replace the storage account, PostgreSQL credentials, and model path with values for your environment):
 
 ```json
 {
   "ConnectionStrings": {
-	"AlbumWebContext": "Data Source=AlbumWebContext.db"
+	"AlbumWebContext": "Host=localhost;Database=photoit;Username=photoit;Password=<password>"
   },
   "AzureStorage": {
 	"AccountName": "<storage-account-name>",
@@ -81,8 +81,11 @@ Example (replace the storage account and model path with values for your environ
 For local development, set the model path without committing machine-specific values:
 
 ```powershell
+dotnet user-secrets set "ConnectionStrings:AlbumWebContext" "Host=localhost;Database=photoit;Username=photoit;Password=<password>" --project PhotoIt.Web/PhotoIt.Web.csproj
 dotnet user-secrets set "VisionModel:ModelDirectory" "C:\models\onnx_phi3_vision\cpu_and_mobile\cpu-int4-rtn-block-32-acc-level-4" --project PhotoIt.Web/PhotoIt.Web.csproj
 ```
+
+When scaffolding a migration, set `ConnectionStrings__AlbumWebContext` in the shell before running `dotnet ef migrations add`; migration generation does not connect to PostgreSQL.
 
 If using a storage account key instead of `DefaultAzureCredential`, keep it out of source control and set it as a user secret:
 
@@ -94,7 +97,7 @@ dotnet user-secrets set "photostorageaccountkey" "<storage-account-key>" --proje
 
 ## Run locally
 
-1. Configure Azure Storage access and point `VisionModel:ModelDirectory` to a compatible local model directory.
+1. Configure the PostgreSQL connection string, Azure Storage access, and point `VisionModel:ModelDirectory` to a compatible local model directory.
 2. From the solution directory, run the Blazor application:
 
    ```powershell
@@ -103,4 +106,4 @@ dotnet user-secrets set "photostorageaccountkey" "<storage-account-key>" --proje
 
    Alternatively, run `PhotoIt.AppHost` to launch the Aspire application host and its referenced services.
 
-The app applies its Identity SQLite migrations at startup. The Azure Blob container and local model are initialized during startup, so missing model files or unavailable/unauthorized Azure Storage can prevent the app from starting.
+The app applies PostgreSQL migrations at startup. The Azure Blob container and local model are initialized during startup, so a missing database connection, model files, or available/authorized Azure Storage can prevent the app from starting.

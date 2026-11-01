@@ -1,10 +1,7 @@
-using LiteDB;
-
 namespace PhotoIt.Data;
 
 public sealed class ViewableAlbumLayout
 {
-    [BsonId]
     public string AlbumId { get; set; } = string.Empty;
 
     public string Title { get; set; } = string.Empty;
@@ -13,6 +10,4 @@ public sealed class ViewableAlbumLayout
     public List<LayoutPage> Pages { get; set; } = [];
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
-
-
 
