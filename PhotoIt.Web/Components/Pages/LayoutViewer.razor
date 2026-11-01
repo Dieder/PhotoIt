@@ -37,10 +37,47 @@ else
             </div>
         </header>
 
+        <div class="magazine-layout">
+            @if (chapters.Count > 0)
+            {
+                <aside class="magazine-chapter-sidebar">
+                    <p class="magazine-sidebar-heading">Chapters</p>
+                    <nav aria-label="Album chapters">
+                        @foreach (var chapter in chapters)
+                        {
+                            <button type="button"
+                                    class="magazine-sidebar-chapter @(activeChapterId == chapter.Id ? "active" : "")"
+                                    aria-current="@(activeChapterId == chapter.Id ? "page" : null)"
+                                    @onclick="() => OpenChapter(chapter.Id)">
+                                @if (!string.IsNullOrWhiteSpace(chapter.ThumbnailPhotoId))
+                                {
+                                    <img class="magazine-sidebar-thumbnail"
+                                         src="@GetPhotoThumbnailUrl(chapter.ThumbnailPhotoId)"
+                                         alt=""
+                                         loading="lazy" />
+                                }
+                                else
+                                {
+                                    <span class="magazine-sidebar-thumbnail magazine-sidebar-placeholder" aria-hidden="true">✦</span>
+                                }
+                                <span class="magazine-sidebar-copy">
+                                    @if (!string.IsNullOrWhiteSpace(chapter.DateLabel))
+                                    {
+                                        <span class="magazine-sidebar-date">@chapter.DateLabel</span>
+                                    }
+                                    <span class="magazine-sidebar-title">@chapter.Title</span>
+                                    <span class="magazine-sidebar-count">@chapter.Photos.Count photo@(chapter.Photos.Count == 1 ? "" : "s")</span>
+                                </span>
+                            </button>
+                        }
+                    </nav>
+                </aside>
+            }
+            <div class="magazine-content">
         @if (activeChapter is not null)
         {
             <section class="chapter-view">
-                <button type="button" class="magazine-text-button" @onclick="CloseChapter">← All chapters</button>
+                <button type="button" class="magazine-text-button" @onclick="BackToCover">← Back to cover</button>
                 <div class="chapter-view-heading">
                     @if (!string.IsNullOrWhiteSpace(activeChapter.DateLabel))
                     {
@@ -255,6 +292,8 @@ else
                 <button type="button" class="magazine-text-button" @onclick="NextPage" disabled="@(currentViewIndex >= totalPages - 1)">Next →</button>
             </nav>
         }
+            </div>
+        </div>
     </main>
 }
 
@@ -513,7 +552,13 @@ else
         routeMapOpen = false;
     }
 
-    private void CloseChapter() => activeChapterId = null;
+    private void BackToCover()
+    {
+        activeChapterId = null;
+        currentViewIndex = 0;
+        UpdateCurrentContentPage();
+    }
+
     private void OpenIntroduction() => currentViewIndex = 1;
     private void OpenRouteMap() => routeMapOpen = HasRoute;
     private void CloseRouteMap() => routeMapOpen = false;
