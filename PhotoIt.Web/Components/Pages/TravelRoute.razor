@@ -242,8 +242,19 @@
 
     private async Task RefreshMap()
     {
-        if (Model.Legs.All(leg => leg.IsValid()))
+        var hasOpenLastLeg = Model.Legs.Count > 0
+            && string.IsNullOrWhiteSpace(Model.Legs[^1].To.Place);
+        var legsToUpdate = Model.Legs
+            .Take(Model.Legs.Count - (hasOpenLastLeg ? 1 : 0))
+            .ToList();
+
+        if (legsToUpdate.Count > 0 && legsToUpdate.All(leg => leg.IsValid()))
         {
+            if (hasOpenLastLeg)
+            {
+                Model.Legs.RemoveAt(Model.Legs.Count - 1);
+            }
+
             // save Model to database or perform any other necessary actions here
             Model.UpdatedUtc = DateTime.UtcNow;
             foreach(var leg in Model.Legs.Where(x=>x.IsEditing))
@@ -258,8 +269,8 @@
         }
         else
         {
-            // show alert to user that some points are missing
             await JS.InvokeVoidAsync("alert", "Some points are missing geo-coordinates. Please check the input fields.");
+            return;
         }
 
         StateHasChanged();
