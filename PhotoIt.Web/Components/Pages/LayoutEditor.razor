@@ -73,7 +73,19 @@ else
                                     <div class="photo-library-item draggable"
                                          draggable="true"
                                          @ondragstart="() => HandleLibraryDragStart(photo.Id)">
-                                        <img src="albums/@album.Id/photos/@photo.Id/content" alt="@photo.OriginalFileName" />
+                                        @if (PhotoType.IsVideo(photo))
+                                        {
+                                            <video src="albums/@album.Id/photos/@photo.Id/content"
+                                                   aria-label="@photo.OriginalFileName"
+                                                   controls
+                                                   muted
+                                                   playsinline
+                                                   preload="metadata"></video>
+                                        }
+                                        else
+                                        {
+                                            <img src="albums/@album.Id/photos/@photo.Id/content" alt="@photo.OriginalFileName" />
+                                        }
                                         @if (usedInLayout)
                                         {
                                             <span class="photo-used-check" title="Used in album">
@@ -561,6 +573,15 @@ else
         if (string.IsNullOrWhiteSpace(draggedPhotoId))
             return Task.CompletedTask;
 
+        if (args.IsTitlePage
+            && photoLookup.TryGetValue(draggedPhotoId, out var coverPhoto)
+            && PhotoType.IsVideo(coverPhoto))
+        {
+            errorMessage = "Videos can only be placed in a Page L slot.";
+            ClearDragState();
+            return Task.CompletedTask;
+        }
+
         if (args.IsTitlePage)
         {
             if (draggedFromTitlePage && draggedFromSlotCol == 0 && draggedFromSlotRow == 0)
@@ -594,9 +615,9 @@ else
         }
 
         if (photoLookup.TryGetValue(draggedPhotoId, out var draggedPhoto)
-            && !PhotoType.IsCompatible(targetSlot.Type.Id, draggedPhoto.PixelWidth, draggedPhoto.PixelHeight))
+            && !PhotoType.IsCompatible(targetSlot.Type.Id, draggedPhoto))
         {
-            errorMessage = $"This photo orientation is not compatible with the {targetSlot.Type.Name.ToLowerInvariant()} slot.";
+            errorMessage = $"This media type or orientation is not compatible with the {targetSlot.Type.Name.ToLowerInvariant()} slot.";
             ClearDragState();
             return Task.CompletedTask;
         }
@@ -638,16 +659,16 @@ else
 
             if (sourceSlot.PhotoId is not null
                 && photoLookup.TryGetValue(sourceSlot.PhotoId, out var sourcePhoto)
-                && !PhotoType.IsCompatible(targetSlot.Type.Id, sourcePhoto.PixelWidth, sourcePhoto.PixelHeight))
+                && !PhotoType.IsCompatible(targetSlot.Type.Id, sourcePhoto))
             {
-                errorMessage = $"The source photo orientation is not compatible with the {targetSlot.Type.Name.ToLowerInvariant()} slot.";
+                errorMessage = $"The source media type or orientation is not compatible with the {targetSlot.Type.Name.ToLowerInvariant()} slot.";
                 ClearDragState();
                 return Task.CompletedTask;
             }
 
             if (targetSlot.PhotoId is not null
                 && photoLookup.TryGetValue(targetSlot.PhotoId, out var targetPhoto)
-                && !PhotoType.IsCompatible(sourceSlot.Type.Id, targetPhoto.PixelWidth, targetPhoto.PixelHeight))
+                && !PhotoType.IsCompatible(sourceSlot.Type.Id, targetPhoto))
             {
                 errorMessage = "The photos cannot be swapped because their orientations do not match the slots.";
                 ClearDragState();

@@ -33,9 +33,9 @@ else
     @if (canEdit)
     {
         <div class="border rounded p-4 mb-4 bg-light">
-            <label class="form-label" for="photo-upload">Upload photos</label>
-            <InputFile id="photo-upload" OnChange="UploadAsync" multiple accept="image/*,.rw2" />
-            <div class="form-text">Images are stored in Azure Blob Storage under @album.ImageFolderName.</div>
+            <label class="form-label" for="photo-upload">Upload photos and videos</label>
+            <InputFile id="photo-upload" OnChange="UploadAsync" multiple accept="image/*,.rw2,.mp4" />
+            <div class="form-text">Images and MP4 videos are stored in Azure Blob Storage under @album.ImageFolderName. Videos can be placed in Page L slots and play automatically in the album viewer.</div>
 
             @if (isUploading || uploadTotal > 0)
             {
@@ -116,7 +116,21 @@ else
                         <div class="col">
                             <article class="card h-100 shadow-sm">
                                 <div class="photo-exif-container">
-                                    <img class="card-img-top photo-thumbnail" src="albums/@album.Id/photos/@photo.Id/content" alt="@photo.OriginalFileName" style="height: 180px; object-fit: contain; background: #e9ecef;" />
+                                    @if (PhotoType.IsVideo(photo))
+                                    {
+                                        <video class="card-img-top photo-thumbnail"
+                                               src="albums/@album.Id/photos/@photo.Id/content"
+                                               aria-label="@photo.OriginalFileName"
+                                               controls
+                                               muted
+                                               playsinline
+                                               preload="metadata"
+                                               style="height: 180px; object-fit: contain; background: #e9ecef;"></video>
+                                    }
+                                    else
+                                    {
+                                        <img class="card-img-top photo-thumbnail" src="albums/@album.Id/photos/@photo.Id/content" alt="@photo.OriginalFileName" style="height: 180px; object-fit: contain; background: #e9ecef;" />
+                                    }
                                     @if (HasExifDetails(photo))
                                     {
                                         <div class="photo-exif-popup" role="tooltip">
@@ -164,7 +178,7 @@ else
                                 @if (canEdit)
                                 {
                                     <div class="card-footer bg-white border-0">
-                                        @if (VisionModel.IsLoaded)
+                                        @if (VisionModel.IsLoaded && !PhotoType.IsVideo(photo))
                                         {
                                             <button class="btn btn-sm btn-outline-primary me-2" @onclick="() => IndexPhotoAsync(photo)" disabled="@IsPhotoIndexing(photo)">
                                                 @(IsPhotoIndexing(photo) ? "Analysing..." : "Index tags")
@@ -227,8 +241,8 @@ else
         return AlbumCatalog.GetDisplayDate(photo.DateTakenUtc, photo.UploadedUtc);
     }
     private int UploadPercent => uploadTotal == 0 ? 0 : (int)((uploadProgress / (double)uploadTotal) * 100);
-    private int TaggingItems => photos.Count == 0 ? 0 : photos.Count;
-    private int TaggingComplete => photos.Count(photo => photo.IndexedUtc is not null || photo.Tags.Count > 0);
+    private int TaggingItems => photos.Count(photo => !PhotoType.IsVideo(photo));
+    private int TaggingComplete => photos.Count(photo => !PhotoType.IsVideo(photo) && (photo.IndexedUtc is not null || photo.Tags.Count > 0));
     private int TaggingPercent => TaggingItems == 0 ? 0 : (int)((TaggingComplete / (double)TaggingItems) * 100);
     private sealed record DatePhotoGroup(DateTime Date, string Header, List<AlbumPhoto> Photos);
 
@@ -250,7 +264,7 @@ else
             return;
 
         exifRefreshStarted = true;
-        var photosToRefresh = photos.Where(photo => !HasExtendedExif(photo)).ToList();
+        var photosToRefresh = photos.Where(photo => !PhotoType.IsVideo(photo) && !HasExtendedExif(photo)).ToList();
         var changed = false;
 
         foreach (var photo in photosToRefresh)
@@ -317,21 +331,34 @@ else
             foreach (var file in files)
             {
                 var extension = Path.GetExtension(file.Name);
-                var blobName = $"{album.ImageFolderName}/{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
-                await using var content = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
-                using var memory = new MemoryStream();
-                await content.CopyToAsync(memory);
-                var bytes = memory.ToArray();
+                var isVideo = string.Equals(extension, ".mp4", StringComparison.OrdinalIgnoreCase);
+                if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) && !isVideo)
+                    throw new InvalidDataException("Only MP4 videos are supported.");
 
-                var metadata = PhotoMetadataReader.Extract(bytes);
-                await Storage.UploadAsync(blobName, new MemoryStream(bytes), file.ContentType, CancellationToken.None);
+                var blobName = $"{album.ImageFolderName}/{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
+                var contentType = isVideo ? "video/mp4" : file.ContentType;
+                var metadata = new AlbumPhotoMetadata();
+                if (isVideo)
+                {
+                    await using var content = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
+                    await Storage.UploadAsync(blobName, content, contentType, CancellationToken.None);
+                }
+                else
+                {
+                    await using var content = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
+                    using var memory = new MemoryStream();
+                    await content.CopyToAsync(memory);
+                    var bytes = memory.ToArray();
+                    metadata = PhotoMetadataReader.Extract(bytes);
+                    await Storage.UploadAsync(blobName, new MemoryStream(bytes), contentType, CancellationToken.None);
+                }
 
                 var photo = new AlbumPhoto
                 {
                     AlbumId = album.Id,
                     BlobName = blobName,
                     OriginalFileName = file.Name,
-                    ContentType = file.ContentType,
+                    ContentType = contentType,
                     Length = file.Size,
                     PixelWidth = metadata.PixelWidth,
                     PixelHeight = metadata.PixelHeight,
@@ -355,7 +382,8 @@ else
                 };
 
                 Catalog.AddPhoto(photo);
-                IndexQueue.Enqueue(new AlbumPhotoIndexRequest(album.Id, photo.Id));
+                if (!isVideo)
+                    IndexQueue.Enqueue(new AlbumPhotoIndexRequest(album.Id, photo.Id));
                 uploadProgress++;
                 uploadStatus = $"Uploading {uploadProgress} of {uploadTotal}...";
                 await InvokeAsync(StateHasChanged);
@@ -367,7 +395,7 @@ else
         }
         catch (Exception exception)
         {
-            errorMessage = $"Photo upload failed: {exception.Message}";
+            errorMessage = $"Media upload failed: {exception.Message}";
             uploadStatus = "Failed";
         }
         finally

@@ -82,6 +82,12 @@ public sealed class PhotoVisionOrchestrator
         foreach (var photo in catalog.ListPhotos(albumId))
         {
             ct.ThrowIfCancellationRequested();
+            if (PhotoType.IsVideo(photo))
+            {
+                skipped++;
+                continue;
+            }
+
             if (photo.IndexedUtc is not null && photo.Tags.Count > 0)
             {
                 skipped++;
@@ -112,6 +118,9 @@ public sealed class PhotoVisionOrchestrator
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(photo);
+        if (PhotoType.IsVideo(photo))
+            throw new ArgumentException("Video files cannot be indexed as photos.", nameof(photo));
+
         await using var content = (await storage.DownloadAsync(photo.BlobName, ct)).Content;
         using var memory = new MemoryStream();
         await content.CopyToAsync(memory, ct);

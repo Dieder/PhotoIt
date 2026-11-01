@@ -18,7 +18,8 @@
                  @ondrop="() => HandleCoverDrop()"
                  @ondrop:preventDefault
                  @ondragover:preventDefault>
-                @if (!string.IsNullOrWhiteSpace(CoverPhotoId))
+                @if (!string.IsNullOrWhiteSpace(CoverPhotoId)
+                    && (!PhotoLookup.TryGetValue(CoverPhotoId, out var coverMedia) || !PhotoType.IsVideo(coverMedia)))
                 {
                     <div class="slot-photo @(Editable ? "draggable" : "")"
                          draggable="@Editable"
@@ -58,6 +59,9 @@
             {
                 var placedSlot = Photos.FirstOrDefault(item => item.Col == slot.Col && item.Row == slot.Row);
                 var photoId = placedSlot?.PhotoId;
+                var isVideo = photoId is not null
+                    && PhotoLookup.TryGetValue(photoId, out var media)
+                    && PhotoType.IsVideo(media);
 
                 <div class="layout-slot size-@slot.Type.Id"
                      style="grid-column: @slot.Col / span @slot.ColSpan;
@@ -77,16 +81,31 @@
                              @onpointermove="HandlePhotoPositionMove"
                              @onpointerup="EndPhotoPositionDrag"
                              @onpointercancel="EndPhotoPositionDrag"
-                             @onpointerdown:preventDefault="true">
+                             @onpointerdown:preventDefault="@(!isVideo)">
 
-                             <img src="@GetPhotoUrl(photoId!)"
-                                 alt="@GetPhotoName(photoId!)"
-                                   class="photo-img"
-                                   data-user-zoom="@GetZoomValue(placedSlot)"
-                                   data-position-x="@GetPositionValue(placedSlot?.PositionX ?? 50d)"
-                                    data-position-y="@GetPositionValue(placedSlot?.PositionY ?? 50d)"
-                                    data-offset-x="@GetOffsetValue(placedSlot?.OffsetX)"
-                                    data-offset-y="@GetOffsetValue(placedSlot?.OffsetY)" />
+                             @if (isVideo)
+                             {
+                                 <video src="@GetPhotoUrl(photoId!)"
+                                        class="photo-video"
+                                        aria-label="@GetPhotoName(photoId!)"
+                                        controls
+                                        autoplay="@(!Editable)"
+                                        muted
+                                        playsinline
+                                        preload="auto"
+                                        @onpointerdown:stopPropagation="true"></video>
+                             }
+                             else
+                             {
+                                 <img src="@GetPhotoUrl(photoId!)"
+                                      alt="@GetPhotoName(photoId!)"
+                                      class="photo-img"
+                                      data-user-zoom="@GetZoomValue(placedSlot)"
+                                      data-position-x="@GetPositionValue(placedSlot?.PositionX ?? 50d)"
+                                      data-position-y="@GetPositionValue(placedSlot?.PositionY ?? 50d)"
+                                      data-offset-x="@GetOffsetValue(placedSlot?.OffsetX)"
+                                      data-offset-y="@GetOffsetValue(placedSlot?.OffsetY)" />
+                             }
 
                              @if (Editable)
                              {
@@ -376,7 +395,7 @@
 
     private bool IsPhotoCompatible(PhotoSlot slot, string photoId) =>
         !PhotoLookup.TryGetValue(photoId, out var photo)
-        || PhotoType.IsCompatible(slot.Type.Id, photo.PixelWidth, photo.PixelHeight);
+        || PhotoType.IsCompatible(slot.Type.Id, photo);
 
     private sealed record PhotoPosition(double OffsetX, double OffsetY, double MaxOffsetX, double MaxOffsetY);
 

@@ -78,5 +78,14 @@ namespace PhotoIt.Data
                 _ => true
             };
         }
+
+        public static bool IsVideo(AlbumPhoto photo) =>
+            string.Equals(photo.ContentType, "video/mp4", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(Path.GetExtension(photo.OriginalFileName), ".mp4", StringComparison.OrdinalIgnoreCase);
+
+        public static bool IsCompatible(string slotTypeId, AlbumPhoto photo) =>
+            IsVideo(photo)
+                ? string.Equals(slotTypeId, "paginal", StringComparison.OrdinalIgnoreCase)
+                : IsCompatible(slotTypeId, photo.PixelWidth, photo.PixelHeight);
     }
 }
