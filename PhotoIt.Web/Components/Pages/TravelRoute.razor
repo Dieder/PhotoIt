@@ -33,6 +33,18 @@
             <div class="alert alert-info" role="status">@statusMessage</div>
         }
 
+        <div class="card mb-3">
+            <div class="card-body">
+                <label class="form-label" for="route-description">Cover route text</label>
+                <InputTextArea id="route-description"
+                               class="form-control"
+                               rows="3"
+                               maxlength="300"
+                               @bind-Value="Model.RouteDescription" />
+                <div class="form-text">Optional text shown on the album cover and route map. Leave blank to show the route places automatically. Save route to apply changes.</div>
+            </div>
+        </div>
+
         @foreach (var leg in Model.Legs.Select((item, index) => new { item, index }))
         {
             <div @key="leg.item" class="card mb-2">

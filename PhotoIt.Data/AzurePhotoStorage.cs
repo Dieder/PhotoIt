@@ -40,9 +40,19 @@ public sealed class AzurePhotoStorage
         string blobName,
         Stream content,
         string contentType,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool overwrite = false)
     {
         var blob = _container.GetBlobClient(blobName);
+        if (overwrite)
+        {
+            await blob.UploadAsync(content, overwrite: true, cancellationToken: ct);
+            await blob.SetHttpHeadersAsync(
+                new BlobHttpHeaders { ContentType = contentType },
+                cancellationToken: ct);
+            return;
+        }
+
         await blob.UploadAsync(content, new BlobUploadOptions
         {
             HttpHeaders = new BlobHttpHeaders { ContentType = contentType },

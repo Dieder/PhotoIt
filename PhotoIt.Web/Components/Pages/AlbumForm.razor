@@ -74,6 +74,23 @@
                     </div>
                     <ValidationMessage For="@(() => Model.FullDescription)" />
                 </div>
+
+                <div class="row g-3 mt-2">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label" for="travel-start">Start date</label>
+                        <InputDate id="travel-start" class="form-control album-input" @bind-Value="Model.TravelStartDate" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label" for="travel-end">End date</label>
+                        <InputDate id="travel-end" class="form-control album-input" @bind-Value="Model.TravelEndDate" />
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <InputCheckbox id="show-route" class="form-check-input" @bind-Value="Model.ShowRouteOnCover" />
+                            <label class="form-check-label" for="show-route">Show route and distance on the album cover</label>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <div class="album-section-divider"></div>
@@ -228,6 +245,11 @@
             album.FullDescription = Model.FullDescription;
             album.Intro = Model.Intro;
             album.ImageFolderName = Model.ImageFolderName;
+            album.TravelStartDate = Model.TravelStartDate;
+            album.TravelEndDate = Model.TravelEndDate;
+            album.ShowRouteOnCover = Model.ShowRouteOnCover;
+            album.UseChapterTitles = Model.UseChapterTitles;
+            album.Chapters = Model.Chapters;
 
             try
             {

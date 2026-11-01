@@ -54,6 +54,11 @@ else
             Name = album.Name,
             ImageFolderName = album.ImageFolderName,
             FullDescription = album.FullDescription,
+            TravelStartDate = album.TravelStartDate,
+            TravelEndDate = album.TravelEndDate,
+            ShowRouteOnCover = album.ShowRouteOnCover,
+            UseChapterTitles = album.UseChapterTitles,
+            Chapters = album.Chapters ?? [],
         };
     }
 }

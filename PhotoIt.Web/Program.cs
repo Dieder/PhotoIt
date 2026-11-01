@@ -10,6 +10,7 @@ using PhotoIt.Web.Components;
 using PhotoIt.Web.Components.Account;
 using PhotoIt.Web.Data;
 using Microsoft.Extensions.Http;
+using ImageMagick;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("AlbumWebContext") ?? throw new InvalidOperationException("Connection string 'AlbumWebContext' not found.");
@@ -27,6 +28,7 @@ builder.Services.AddSingleton<AlbumCatalog>(_ =>
     new AlbumCatalog(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "albums.db")));
 builder.Services.AddSingleton<PhotoTagCatalog>(_ =>
     new PhotoTagCatalog(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "photo-tags.db")));
+builder.Services.AddSingleton<PhotoThumbnailService>();
 
 builder.Services.AddHttpClient<NominatimClient>();
 
@@ -126,6 +128,63 @@ app.MapGet("/albums/{albumId}/photos/{photoId}/content", async (
 
     var download = await storage.DownloadAsync(photo.BlobName, ct);
     return Results.Stream(download.Content, download.ContentType, enableRangeProcessing: true);
+});
+
+app.MapGet("/albums/{albumId}/photos/{photoId}/thumbnail", async (
+    string albumId,
+    string photoId,
+    AlbumCatalog catalog,
+    AzurePhotoStorage storage,
+    PhotoThumbnailService thumbnails,
+    ILogger<PhotoThumbnailService> logger,
+    HttpContext httpContext,
+    CancellationToken ct) =>
+{
+    httpContext.Response.Headers.CacheControl = "private, max-age=86400";
+    var photo = catalog.GetPhoto(albumId, photoId);
+    if (photo is null)
+        return Results.NotFound();
+
+    if (photo.ThumbnailUnavailable)
+        return Results.Redirect($"/albums/{albumId}/photos/{photoId}/content");
+
+    if (!string.IsNullOrWhiteSpace(photo.ThumbnailBlobName))
+    {
+        var storedThumbnail = await storage.DownloadAsync(photo.ThumbnailBlobName, ct);
+        return Results.File(storedThumbnail.Content, storedThumbnail.ContentType, enableRangeProcessing: true);
+    }
+
+    var original = await storage.DownloadAsync(photo.BlobName, ct);
+    await using var originalContent = original.Content;
+    using var source = new MemoryStream();
+    await originalContent.CopyToAsync(source, ct);
+
+    byte[] thumbnail;
+    try
+    {
+        thumbnail = thumbnails.Create(source.ToArray());
+    }
+    catch (MagickException exception)
+    {
+        photo.ThumbnailUnavailable = true;
+        catalog.UpdatePhoto(photo);
+        logger.LogWarning(exception, "Could not create photo thumbnail. AlbumId: {AlbumId}, MediaId: {MediaId}", albumId, photoId);
+        return Results.Redirect($"/albums/{albumId}/photos/{photoId}/content");
+    }
+
+    var separator = photo.BlobName.LastIndexOf('/');
+    var photoFolder = separator > 0 ? photo.BlobName[..separator] : albumId;
+    var thumbnailBlobName = $"{photoFolder}/thumbnails/{photoId}.jpg";
+    await storage.UploadAsync(
+        thumbnailBlobName,
+        new MemoryStream(thumbnail),
+        "image/jpeg",
+        ct,
+        overwrite: true);
+    photo.ThumbnailBlobName = thumbnailBlobName;
+    catalog.UpdatePhoto(photo);
+
+    return Results.File(new MemoryStream(thumbnail), "image/jpeg", enableRangeProcessing: true);
 });
 
 app.MapRazorComponents<App>()

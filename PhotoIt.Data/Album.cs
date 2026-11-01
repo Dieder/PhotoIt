@@ -14,6 +14,11 @@ public class Album
     public string FullDescription { get; set; } = string.Empty;
 
     public TripGraph TripGraph { get; set; } = new TripGraph(); 
+    public DateTime? TravelStartDate { get; set; }
+    public DateTime? TravelEndDate { get; set; }
+    public bool ShowRouteOnCover { get; set; } = true;
+    public bool UseChapterTitles { get; set; }
+    public List<AlbumChapter> Chapters { get; set; } = [];
 
     public string Intro { get; set; } = string.Empty;
 

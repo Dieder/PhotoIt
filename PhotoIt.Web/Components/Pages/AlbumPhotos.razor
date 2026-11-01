@@ -8,6 +8,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @inject AlbumCatalog Catalog
 @inject AzurePhotoStorage Storage
+@inject PhotoThumbnailService Thumbnails
 @inject PhotoVisionOrchestrator VisionOrchestrator
 @inject Phi3VisionModel VisionModel
 @inject PhotoIndexQueue IndexQueue
@@ -34,6 +35,28 @@ else
 
     @if (canEdit)
     {
+        <ul class="nav nav-tabs mb-4" role="tablist" aria-label="Photo management sections">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(activeTab == "all" ? "active" : "")"
+                        type="button"
+                        role="tab"
+                        aria-selected="@(activeTab == "all")"
+                        @onclick='() => activeTab = "all"'>All</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(activeTab == "chapters" ? "active" : "")"
+                        type="button"
+                        role="tab"
+                        aria-selected="@(activeTab == "chapters")"
+                        @onclick='() => activeTab = "chapters"'>Chapters</button>
+            </li>
+        </ul>
+    }
+
+    @if (canEdit)
+    {
+        @if (activeTab == "all")
+        {
         <div class="border rounded p-4 mb-4 bg-light">
             <label class="form-label" for="photo-upload">Upload photos and videos</label>
             <InputFile id="photo-upload" OnChange="UploadAsync" multiple accept="image/*,.rw2,.mp4" />
@@ -87,9 +110,148 @@ else
                 <div class="alert alert-danger mt-3 mb-0">@errorMessage</div>
             }
         </div>
+        }
     }
 
-    @if (photos.Count > 0)
+    @if (canEdit && activeTab == "chapters")
+    {
+        <section class="card shadow-sm mb-4">
+            <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                    <div>
+                        <h2 class="h5 mb-1">Chapters</h2>
+                        <p class="text-muted mb-0">Group photos into days or custom story chapters for the album cover.</p>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-3">
+                        <div class="form-check">
+                            <input id="chapter-title-mode" class="form-check-input" type="checkbox"
+                                   checked="@album.UseChapterTitles" @onchange="SetChapterTitleModeAsync" />
+                            <label class="form-check-label" for="chapter-title-mode">Show chapter titles instead of dates</label>
+                        </div>
+                        <button type="button" class="btn btn-primary" @onclick="StartNewChapter" disabled="@(photos.Count == 0)">Add chapter</button>
+                    </div>
+                </div>
+
+                @if (photos.Count == 0)
+                {
+                    <p class="text-muted mb-0">Upload photos in the All tab before adding a chapter.</p>
+                }
+
+                @if (album.Chapters.Count > 0)
+                {
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        @foreach (var chapter in album.Chapters)
+                        {
+                            <div class="border rounded bg-white px-3 py-2 d-flex align-items-center gap-2">
+                                <span>@(string.IsNullOrWhiteSpace(chapter.Title) ? FormatChapterDate(chapter.StartDate) : chapter.Title)</span>
+                                <small class="text-muted">@GetChapterDayCount(chapter) day@(GetChapterDayCount(chapter) == 1 ? "" : "s")</small>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => EditChapter(chapter)">Edit</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" aria-label="Delete chapter" @onclick="() => DeleteChapterAsync(chapter.Id)">×</button>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (isChapterEditorOpen)
+                {
+                <div class="border rounded p-3 bg-white">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                        <div>
+                            @if (editingChapterId is not null)
+                            {
+                                <span class="small text-uppercase text-muted">Editing chapter</span>
+                            }
+                            <h3 class="h4 mb-0">
+                                @(editingChapterId is null
+                                    ? "Add chapter"
+                                    : string.IsNullOrWhiteSpace(chapterTitle) ? "Untitled chapter" : chapterTitle)
+                                @if (editingChapterId is not null)
+                                {
+                                    <span class="fs-6 fw-normal text-muted">(@selectedChapterPhotoIds.Count photo@(selectedChapterPhotoIds.Count == 1 ? "" : "s"))</span>
+                                }
+                            </h3>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-primary" @onclick="SaveChapterAsync">Save chapter</button>
+                            @if (editingChapterId is not null)
+                            {
+                                <button type="button" class="btn btn-outline-secondary" @onclick="CancelChapterEdit">Cancel</button>
+                            }
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label" for="chapter-title">Chapter title</label>
+                            <input id="chapter-title" class="form-control" @bind="chapterTitle" @bind:event="oninput" placeholder="e.g. At the coast" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="chapter-date">Start date</label>
+                            <InputDate id="chapter-date" class="form-control" @bind-Value="chapterStartDate" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="chapter-end-date">End date (optional)</label>
+                            <InputDate id="chapter-end-date" class="form-control" @bind-Value="chapterEndDate" />
+                            <div class="form-text">When blank, photos are filtered to the start date, or through the day before the next chapter starts.</div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <span class="form-label d-block">Photos in this chapter (@ChapterPickerPhotos.Count())</span>
+                        <div class="chapter-photo-picker">
+                            @foreach (var photo in ChapterPickerPhotos.OrderBy(photo => GetPhotoSortDate(photo)))
+                            {
+                                var isSelected = selectedChapterPhotoIds.Contains(photo.Id);
+                                var isVideo = PhotoType.IsVideo(photo);
+                                <article class="chapter-photo-choice @(isSelected ? "selected" : "")">
+                                    <label class="chapter-photo-select">
+                                        <input type="checkbox"
+                                               checked="@isSelected"
+                                               @onchange="args => SetChapterPhotoSelected(photo.Id, args)" />
+                                        <span>Select</span>
+                                    </label>
+                                    @if (isVideo)
+                                    {
+                                        <div class="chapter-photo-preview chapter-video-preview" aria-label="Video">
+                                            <span aria-hidden="true">▶</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <img class="chapter-photo-preview"
+                                             src="@($"/albums/{album.Id}/photos/{photo.Id}/thumbnail")"
+                                             alt="@photo.OriginalFileName"
+                                             loading="lazy" />
+                                    }
+                                    @if (isSelected)
+                                    {
+                                        <span class="chapter-photo-filename" title="@photo.OriginalFileName">@photo.OriginalFileName</span>
+                                    }
+                                    @if (isSelected && !isVideo)
+                                    {
+                                        <label class="chapter-thumbnail-select">
+                                            <input type="radio"
+                                                   name="chapter-thumbnail"
+                                                   checked="@(chapterThumbnailPhotoId == photo.Id)"
+                                                   @onchange="() => SetChapterThumbnail(photo.Id)" />
+                                            <span>Use as chapter cover</span>
+                                        </label>
+                                    }
+                                </article>
+                            }
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(chapterError))
+                    {
+                        <div class="alert alert-danger mt-3 mb-0" role="alert">@chapterError</div>
+                    }
+                </div>
+                }
+            </div>
+        </section>
+    }
+
+    @if ((!canEdit || activeTab == "all") && photos.Count > 0)
     {
         <div class="mb-4">
             <label class="form-label" for="photo-tag-filter">Filter photos by tag</label>
@@ -102,98 +264,101 @@ else
         </div>
     }
 
-    @if (!FilteredPhotos.Any())
+    @if (!canEdit || activeTab == "all")
     {
-        <p class="text-muted">@(photos.Count == 0 ? "No photos uploaded yet." : "No photos match the selected tag.")</p>
-    }
-    else
-    {
-        @foreach (var photoGroup in PhotoGroups)
+        @if (!FilteredPhotos.Any())
         {
-            <div class="mb-4">
-                <h2 class="h5 mb-3">@photoGroup.Header</h2>
-                <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-4 g-4">
-                    @foreach (var photo in photoGroup.Photos)
-                    {
-                        <div class="col">
-                            <article class="card h-100 shadow-sm">
-                                <div class="photo-exif-container">
-                                    @if (PhotoType.IsVideo(photo))
-                                    {
-                                        <video class="card-img-top photo-thumbnail"
-                                               src="albums/@album.Id/photos/@photo.Id/content"
-                                               aria-label="@photo.OriginalFileName"
-                                               controls
-                                               muted
-                                               playsinline
-                                               preload="metadata"
-                                               style="height: 180px; object-fit: contain; background: #e9ecef;"></video>
-                                    }
-                                    else
-                                    {
-                                        <img class="card-img-top photo-thumbnail" src="albums/@album.Id/photos/@photo.Id/content" alt="@photo.OriginalFileName" style="height: 180px; object-fit: contain; background: #e9ecef;" />
-                                    }
-                                    @if (HasExifDetails(photo))
-                                    {
-                                        <div class="photo-exif-popup" role="tooltip">
-                                            <strong>EXIF details</strong>
-                                            @if (!string.IsNullOrWhiteSpace(photo.CameraMake) || !string.IsNullOrWhiteSpace(photo.CameraModel))
-                                            {
-                                                <span>@GetCameraDisplay(photo)</span>
-                                            }
-                                            @foreach (var detail in GetExifDetails(photo))
-                                            {
-                                                <span><b>@detail.Label:</b> @detail.Value</span>
-                                            }
-                                            @if (photo.Latitude is not null && photo.Longitude is not null)
-                                            {
-                                                <span><b>Location:</b> @photo.Latitude.Value.ToString("F6"), @photo.Longitude.Value.ToString("F6")</span>
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text text-truncate" title="@photo.OriginalFileName">@photo.OriginalFileName</p>
-                                    <small class="text-muted d-block">@FormatLength(photo.Length)</small>
-                                    @if (photo.DateTakenUtc is not null)
-                                    {
-                                        <small class="text-muted d-block">Taken: @photo.DateTakenUtc.Value.ToLocalTime().ToString("ddd dd MMM yyyy")</small>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(photo.CameraMake) || !string.IsNullOrWhiteSpace(photo.CameraModel))
-                                    {
-                                        <small class="text-muted d-block">@GetCameraDisplay(photo)</small>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(photo.Description))
-                                    {
-                                        <p class="mt-2 mb-0 small" style="white-space: pre-wrap">@photo.Description</p>
-                                    }
-                                    @if (photo.Tags.Count > 0)
-                                    {
-                                        <div class="mt-2 d-flex flex-wrap gap-1" aria-label="Photo tags">
-                                            @foreach (var tag in photo.Tags)
-                                            {
-                                                <span class="badge text-bg-secondary">@tag</span>
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                                @if (canEdit)
-                                {
-                                    <div class="card-footer bg-white border-0">
-                                        @if (VisionModel.IsLoaded && !PhotoType.IsVideo(photo))
+            <p class="text-muted">@(photos.Count == 0 ? "No photos uploaded yet." : "No photos match the selected tag.")</p>
+        }
+        else
+        {
+            @foreach (var photoGroup in PhotoGroups)
+            {
+                <div class="mb-4">
+                    <h2 class="h5 mb-3">@photoGroup.Header</h2>
+                    <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-4 g-4">
+                        @foreach (var photo in photoGroup.Photos)
+                        {
+                            <div class="col">
+                                <article class="card h-100 shadow-sm">
+                                    <div class="photo-exif-container">
+                                        @if (PhotoType.IsVideo(photo))
                                         {
-                                            <button class="btn btn-sm btn-outline-primary me-2" @onclick="() => IndexPhotoAsync(photo)" disabled="@IsPhotoIndexing(photo)">
-                                                @(IsPhotoIndexing(photo) ? "Analysing..." : "Index tags")
-                                            </button>
+                                            <video class="card-img-top photo-thumbnail"
+                                                   src="albums/@album.Id/photos/@photo.Id/content"
+                                                   aria-label="@photo.OriginalFileName"
+                                                   controls
+                                                   muted
+                                                   playsinline
+                                                   preload="metadata"
+                                                   style="height: 180px; object-fit: contain; background: #e9ecef;"></video>
                                         }
-                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(photo)">Delete</button>
+                                        else
+                                        {
+                                            <img class="card-img-top photo-thumbnail" src="albums/@album.Id/photos/@photo.Id/content" alt="@photo.OriginalFileName" style="height: 180px; object-fit: contain; background: #e9ecef;" />
+                                        }
+                                        @if (HasExifDetails(photo))
+                                        {
+                                            <div class="photo-exif-popup" role="tooltip">
+                                                <strong>EXIF details</strong>
+                                                @if (!string.IsNullOrWhiteSpace(photo.CameraMake) || !string.IsNullOrWhiteSpace(photo.CameraModel))
+                                                {
+                                                    <span>@GetCameraDisplay(photo)</span>
+                                                }
+                                                @foreach (var detail in GetExifDetails(photo))
+                                                {
+                                                    <span><b>@detail.Label:</b> @detail.Value</span>
+                                                }
+                                                @if (photo.Latitude is not null && photo.Longitude is not null)
+                                                {
+                                                    <span><b>Location:</b> @photo.Latitude.Value.ToString("F6"), @photo.Longitude.Value.ToString("F6")</span>
+                                                }
+                                            </div>
+                                        }
                                     </div>
-                                }
-                            </article>
-                        </div>
-                    }
+                                    <div class="card-body">
+                                        <p class="card-text text-truncate" title="@photo.OriginalFileName">@photo.OriginalFileName</p>
+                                        <small class="text-muted d-block">@FormatLength(photo.Length)</small>
+                                        @if (photo.DateTakenUtc is not null)
+                                        {
+                                            <small class="text-muted d-block">Taken: @photo.DateTakenUtc.Value.ToLocalTime().ToString("ddd dd MMM yyyy")</small>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(photo.CameraMake) || !string.IsNullOrWhiteSpace(photo.CameraModel))
+                                        {
+                                            <small class="text-muted d-block">@GetCameraDisplay(photo)</small>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(photo.Description))
+                                        {
+                                            <p class="mt-2 mb-0 small" style="white-space: pre-wrap">@photo.Description</p>
+                                        }
+                                        @if (photo.Tags.Count > 0)
+                                        {
+                                            <div class="mt-2 d-flex flex-wrap gap-1" aria-label="Photo tags">
+                                                @foreach (var tag in photo.Tags)
+                                                {
+                                                    <span class="badge text-bg-secondary">@tag</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                    @if (canEdit)
+                                    {
+                                        <div class="card-footer bg-white border-0">
+                                            @if (VisionModel.IsLoaded && !PhotoType.IsVideo(photo))
+                                            {
+                                                <button class="btn btn-sm btn-outline-primary me-2" @onclick="() => IndexPhotoAsync(photo)" disabled="@IsPhotoIndexing(photo)">
+                                                    @(IsPhotoIndexing(photo) ? "Analysing..." : "Index tags")
+                                                </button>
+                                            }
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(photo)">Delete</button>
+                                        </div>
+                                    }
+                                </article>
+                            </div>
+                        }
+                    </div>
                 </div>
-            </div>
+            }
         }
     }
 }
@@ -204,13 +369,22 @@ else
 
     private Album? album;
     private IReadOnlyList<AlbumPhoto> photos = [];
+    private string activeTab = "all";
     private string tagFilter = string.Empty;
     private bool isUploading;
     private bool isIndexing;
     private bool exifRefreshStarted;
     private bool canEdit;
     private string? errorMessage;
+    private string? chapterError;
     private string? indexMessage;
+    private string chapterTitle = string.Empty;
+    private DateTime? chapterStartDate;
+    private DateTime? chapterEndDate;
+    private string? chapterThumbnailPhotoId;
+    private string? editingChapterId;
+    private bool isChapterEditorOpen;
+    private readonly HashSet<string> selectedChapterPhotoIds = new(StringComparer.OrdinalIgnoreCase);
     private int uploadProgress;
     private int uploadTotal;
     private string uploadStatus = "Ready";
@@ -233,6 +407,37 @@ else
             : photos.Where(photo => photo.Tags.Any(tag =>
                 tag.Contains(tagFilter.Trim(), StringComparison.OrdinalIgnoreCase)));
 
+    private IEnumerable<AlbumPhoto> ChapterPickerPhotos
+    {
+        get
+        {
+            if (chapterStartDate is not DateTime startDate)
+                return photos;
+
+            var start = startDate.Date;
+            var nextChapterStart = album?.Chapters
+                .Where(chapter => chapter.Id != editingChapterId
+                    && chapter.StartDate.HasValue
+                    && chapter.StartDate.Value.Date > start)
+                .Select(chapter => (DateTime?)chapter.StartDate!.Value.Date)
+                .OrderBy(date => date)
+                .FirstOrDefault();
+            var explicitEndExclusive = chapterEndDate?.Date.AddDays(1);
+            var endExclusive = explicitEndExclusive.HasValue && nextChapterStart.HasValue
+                ? (explicitEndExclusive.Value < nextChapterStart.Value ? explicitEndExclusive.Value : nextChapterStart.Value)
+                : explicitEndExclusive ?? nextChapterStart ?? start.AddDays(1);
+
+            if (endExclusive <= start)
+                return [];
+
+            return photos.Where(photo =>
+            {
+                var photoDate = GetPhotoGroupDate(photo);
+                return photoDate >= start && photoDate < endExclusive;
+            });
+        }
+    }
+
     private static DateTime GetPhotoGroupDate(AlbumPhoto photo)
     {
         return AlbumCatalog.GetDisplayDate(photo.DateTakenUtc, photo.UploadedUtc).Date;
@@ -251,6 +456,12 @@ else
     protected override async Task OnInitializedAsync()
     {
         album = Catalog.Get(Id);
+        if (album is not null)
+        {
+            album.Chapters ??= [];
+            foreach (var chapter in album.Chapters)
+                chapter.PhotoIds ??= [];
+        }
         LoadPhotos();
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -343,6 +554,8 @@ else
                 var blobName = $"{album.ImageFolderName}/{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
                 var contentType = isVideo ? "video/mp4" : file.ContentType;
                 var metadata = new AlbumPhotoMetadata();
+                byte[]? thumbnailBytes = null;
+                var thumbnailUnavailable = false;
                 if (isVideo)
                 {
                     await using var content = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
@@ -355,6 +568,15 @@ else
                     await content.CopyToAsync(memory);
                     var bytes = memory.ToArray();
                     metadata = PhotoMetadataReader.Extract(bytes);
+                    try
+                    {
+                        thumbnailBytes = Thumbnails.Create(bytes);
+                    }
+                    catch (ImageMagick.MagickException exception)
+                    {
+                        thumbnailUnavailable = true;
+                        Logger.LogWarning(exception, "Could not create photo thumbnail during upload. AlbumId: {AlbumId}", album.Id);
+                    }
                     await Storage.UploadAsync(blobName, new MemoryStream(bytes), contentType, CancellationToken.None);
                 }
 
@@ -362,6 +584,7 @@ else
                 {
                     AlbumId = album.Id,
                     BlobName = blobName,
+                    ThumbnailUnavailable = thumbnailUnavailable,
                     OriginalFileName = file.Name,
                     ContentType = contentType,
                     Length = file.Size,
@@ -385,6 +608,18 @@ else
                     ExposureProgram = metadata.ExposureProgram,
                     WhiteBalance = metadata.WhiteBalance,
                 };
+
+                if (thumbnailBytes is not null)
+                {
+                    var thumbnailBlobName = $"{album.ImageFolderName}/thumbnails/{photo.Id}.jpg";
+                    await Storage.UploadAsync(
+                        thumbnailBlobName,
+                        new MemoryStream(thumbnailBytes),
+                        "image/jpeg",
+                        CancellationToken.None,
+                        overwrite: true);
+                    photo.ThumbnailBlobName = thumbnailBlobName;
+                }
 
                 Catalog.AddPhoto(photo);
                 PhotoItTelemetry.RecordPhotoUploaded();
@@ -425,8 +660,21 @@ else
         errorMessage = null;
         try
         {
+            if (!string.IsNullOrWhiteSpace(photo.ThumbnailBlobName))
+                await Storage.DeleteAsync(photo.ThumbnailBlobName);
             await Storage.DeleteAsync(photo.BlobName);
             Catalog.DeletePhoto(photo.Id);
+            if (album is not null)
+            {
+                foreach (var chapter in album.Chapters)
+                {
+                    chapter.PhotoIds.RemoveAll(photoId => photoId == photo.Id);
+                    if (chapter.ThumbnailPhotoId == photo.Id)
+                        chapter.ThumbnailPhotoId = chapter.PhotoIds.FirstOrDefault();
+                }
+                album.Chapters.RemoveAll(chapter => chapter.PhotoIds.Count == 0);
+                Catalog.Update(album);
+            }
             Catalog.Touch(Id);
             LoadPhotos();
         }
@@ -491,6 +739,165 @@ else
     private void LoadPhotos()
     {
         photos = album is null ? [] : Catalog.ListPhotos(album.Id);
+    }
+
+    private async Task SetChapterTitleModeAsync(ChangeEventArgs args)
+    {
+        if (album is null)
+            return;
+
+        album.UseChapterTitles = args.Value is bool useTitles && useTitles;
+        Catalog.Update(album);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void SetChapterPhotoSelected(string photoId, ChangeEventArgs args)
+    {
+        if (args.Value is bool selected && selected)
+        {
+            selectedChapterPhotoIds.Add(photoId);
+            chapterThumbnailPhotoId ??= photoId;
+        }
+        else
+        {
+            selectedChapterPhotoIds.Remove(photoId);
+            if (string.Equals(chapterThumbnailPhotoId, photoId, StringComparison.OrdinalIgnoreCase))
+                chapterThumbnailPhotoId = selectedChapterPhotoIds.FirstOrDefault();
+        }
+    }
+
+    private void SetChapterThumbnail(string photoId)
+    {
+        chapterThumbnailPhotoId = photoId;
+    }
+
+    private void EditChapter(AlbumChapter chapter)
+    {
+        editingChapterId = chapter.Id;
+        isChapterEditorOpen = true;
+        chapterTitle = chapter.Title;
+        chapterStartDate = chapter.StartDate;
+        chapterEndDate = chapter.EndDate;
+        selectedChapterPhotoIds.Clear();
+        foreach (var photoId in chapter.PhotoIds)
+            selectedChapterPhotoIds.Add(photoId);
+        chapterThumbnailPhotoId = chapter.ThumbnailPhotoId;
+        chapterError = null;
+    }
+
+    private void StartNewChapter()
+    {
+        CancelChapterEdit();
+        isChapterEditorOpen = true;
+    }
+
+    private Task SaveChapterAsync()
+    {
+        if (album is null)
+            return Task.CompletedTask;
+
+        if (!selectedChapterPhotoIds.Any(photoId =>
+                photos.Any(photo => photo.Id == photoId && !PhotoType.IsVideo(photo))))
+        {
+            chapterError = "Each chapter needs at least one image to use as its thumbnail.";
+            return Task.CompletedTask;
+        }
+
+        if (string.IsNullOrWhiteSpace(chapterTitle) && chapterStartDate is null)
+        {
+            chapterError = "Enter a chapter title or start date.";
+            return Task.CompletedTask;
+        }
+
+        if (chapterStartDate is DateTime startDate
+            && chapterEndDate is DateTime endDate
+            && endDate.Date < startDate.Date)
+        {
+            chapterError = "The chapter end date cannot be before its start date.";
+            return Task.CompletedTask;
+        }
+        if (chapterEndDate.HasValue && !chapterStartDate.HasValue)
+        {
+            chapterError = "Set a start date before setting an end date.";
+            return Task.CompletedTask;
+        }
+
+        var chapter = album.Chapters.FirstOrDefault(item => item.Id == editingChapterId)
+            ?? new AlbumChapter();
+        chapter.Title = chapterTitle.Trim();
+        chapter.StartDate = chapterStartDate;
+        chapter.EndDate = chapterEndDate;
+        chapter.PhotoIds = selectedChapterPhotoIds.ToList();
+        chapter.ThumbnailPhotoId = selectedChapterPhotoIds.Contains(chapterThumbnailPhotoId ?? string.Empty)
+            && photos.Any(photo => photo.Id == chapterThumbnailPhotoId && !PhotoType.IsVideo(photo))
+            ? chapterThumbnailPhotoId
+            : selectedChapterPhotoIds.First(photoId => photos.Any(photo => photo.Id == photoId && !PhotoType.IsVideo(photo)));
+
+        foreach (var existing in album.Chapters.Where(item => item.Id != chapter.Id))
+            existing.PhotoIds.RemoveAll(photoId => selectedChapterPhotoIds.Contains(photoId));
+        album.Chapters.RemoveAll(item => item.Id != chapter.Id && item.PhotoIds.Count == 0);
+
+        if (!album.Chapters.Any(item => item.Id == chapter.Id))
+            album.Chapters.Add(chapter);
+
+        Catalog.Update(album);
+        CancelChapterEdit();
+        return Task.CompletedTask;
+    }
+
+    private Task DeleteChapterAsync(string chapterId)
+    {
+        if (album is null)
+            return Task.CompletedTask;
+
+        album.Chapters.RemoveAll(chapter => chapter.Id == chapterId);
+        Catalog.Update(album);
+        if (editingChapterId == chapterId)
+            CancelChapterEdit();
+        return Task.CompletedTask;
+    }
+
+    private void CancelChapterEdit()
+    {
+        editingChapterId = null;
+        isChapterEditorOpen = false;
+        chapterTitle = string.Empty;
+        chapterStartDate = null;
+        chapterEndDate = null;
+        chapterThumbnailPhotoId = null;
+        selectedChapterPhotoIds.Clear();
+        chapterError = null;
+    }
+
+    private static string FormatChapterDate(DateTime? date) =>
+        date?.ToString("d MMM yyyy") ?? "Untitled chapter";
+
+    private int GetChapterDayCount(AlbumChapter chapter)
+    {
+        if (chapter.StartDate is DateTime start)
+        {
+            var nextChapterStart = album?.Chapters
+                .Where(candidate => candidate.Id != chapter.Id
+                    && candidate.StartDate.HasValue
+                    && candidate.StartDate.Value.Date > start.Date)
+                .Select(candidate => (DateTime?)candidate.StartDate!.Value.Date)
+                .OrderBy(date => date)
+                .FirstOrDefault();
+            var nextEnd = nextChapterStart?.AddDays(-1);
+            var end = chapter.EndDate?.Date is DateTime explicitEnd && nextEnd.HasValue
+                ? (explicitEnd < nextEnd.Value ? explicitEnd : nextEnd.Value)
+                : chapter.EndDate?.Date ?? nextEnd ?? start.Date;
+            return Math.Max(1, (end - start.Date).Days + 1);
+        }
+
+        var photoDates = photos
+            .Where(photo => chapter.PhotoIds.Contains(photo.Id, StringComparer.OrdinalIgnoreCase))
+            .Select(GetPhotoGroupDate)
+            .Distinct()
+            .Count();
+        if (photoDates > 0)
+            return photoDates;
+        return chapter.EndDate.HasValue ? 1 : 0;
     }
 
     private bool IsPhotoIndexing(AlbumPhoto photo)

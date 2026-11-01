@@ -16,88 +16,222 @@
     <div class="alert alert-warning">Album not found.</div>
     <a href="albums">Back to albums</a>
 }
-else if (albumLayout is null)
-{
-    <div class="alert alert-warning">No layout has been created for this album yet.</div>
-            @if (canEdit && !SharedLink)
-    {
-        <a class="btn btn-primary" href="albums/@album.Id/layout/edit">Create layout</a>
-    }
-}
 else
 {
-    <div style="@GetBackgroundStyle(album.BackGroundFill)" class="layout-viewer" tabindex="0" @onkeydown="HandleKeyDown">
-        <div class="layout-viewer-toolbar d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-            <div>
-                @if (!SharedLink)
+    <main class="magazine-viewer" tabindex="0" @onkeydown="HandleKeyDown">
+        <header class="magazine-toolbar">
+            @if (!SharedLink)
+            {
+                <a class="magazine-back-link" href="/albums/@album.Id">← Back to album</a>
+            }
+            else
+            {
+                <span class="magazine-brand">PHOTOBOOK</span>
+            }
+            <div class="magazine-toolbar-actions">
+                @if (canEdit && !SharedLink)
                 {
-                    <a class="back-to-album-link" href="albums/@album.Id">&larr; Back to album</a>
+                    <a class="magazine-edit-link" href="/albums/@album.Id/layout/edit">Edit layout</a>
+                    <a class="magazine-edit-link" href="/albums/@album.Id/edit">Album settings</a>
                 }
             </div>
-            @if (canEdit && !SharedLink)
-            {
-                <div class="d-flex gap-2">
-                    <a class="btn btn-sm btn-secondary" href="albums/@album.Id/layout/edit">Edit layout</a>
-                </div>
-            }
-        </div>
+        </header>
 
-        <div class="layout-viewer-page">
-            @if (currentViewIndex == 0)
-            {
-                <LayoutPageRenderer AlbumId="@album.Id"
-                                    IsTitlePage="true"
-                                       Title="@(albumLayout.Title)"
-                                       Subtitle="@(albumLayout.Subtitle)"
-                                       CoverPhotoId="@(albumLayout.CoverPhotoId)"
-                                    PhotoLookup="@photoLookup"
-                                     Editable="false"
-                                     PresentationMode="@SharedLink" />
-            }
-            else if (currentViewIndex == 1)
-            {
-                <div class="album-introduction-page">
-                    <section class="album-introduction">
-                        <h1 class="h3 mb-3">@album.Name</h1>
-                        @if (string.IsNullOrWhiteSpace(album.Intro))
-                        {
-                            <p class="text-muted">No introduction has been added.</p>
-                        }
-                        else
-                        {
-                            <div class="album-introduction-content">
-                                @((MarkupString)Markdown.ToHtml(album.Intro))
-                            </div>
-                        }
-                    </section>
-                    <section class="album-route-map">
-                        <h2 class="h5 mb-3">Travel route</h2>
-                        <div id="travelMap" class="album-route-map-canvas"></div>
-                    </section>
+        @if (activeChapter is not null)
+        {
+            <section class="chapter-view">
+                <button type="button" class="magazine-text-button" @onclick="CloseChapter">← All chapters</button>
+                <div class="chapter-view-heading">
+                    <p class="magazine-eyebrow">@activeChapter.DateLabel</p>
+                    <h1>@activeChapter.Title</h1>
+                    <p>@activeChapter.Days day@(activeChapter.Days == 1 ? "" : "s") · @activeChapter.Photos.Count photo@(activeChapter.Photos.Count == 1 ? "" : "s")</p>
                 </div>
-            }
-            else if (currentContentPage is not null)
-            {
+                <div class="chapter-photo-grid">
+                    @foreach (var photo in activeChapter.Photos)
+                    {
+                        <figure class="chapter-photo">
+                            @if (PhotoType.IsVideo(photo))
+                            {
+                                <video src="@GetPhotoUrl(photo.Id)" controls playsinline preload="metadata"></video>
+                            }
+                            else
+                            {
+                                <img src="@GetPhotoUrl(photo.Id)" alt="Photo from @activeChapter.Title" loading="lazy" />
+                            }
+                        </figure>
+                    }
+                </div>
+            </section>
+        }
+        else if (currentViewIndex == 0)
+        {
+            <section class="magazine-cover">
+                <div class="magazine-hero" style="@GetCoverStyle()">
+                    <div class="magazine-hero-copy">
+                        <p class="magazine-eyebrow">A collection of moments</p>
+                        <h1>@GetCoverTitle()</h1>
+                        @if (!string.IsNullOrWhiteSpace(GetCoverSubtitle()))
+                        {
+                            <p class="magazine-hero-subtitle">@GetCoverSubtitle()</p>
+                        }
+                    </div>
+                    <div class="magazine-hero-meta">
+                        <span>@GetTravelPeriod()</span>
+                        <span>@photos.Count photo@(photos.Count == 1 ? "" : "s")</span>
+                        @if (album.ShowRouteOnCover && HasRoute)
+                        {
+                            <button type="button" class="magazine-hero-route" @onclick="OpenRouteMap">
+                                @GetDistanceLabel() · View route
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="magazine-cover-content">
+                    <div class="magazine-info-grid">
+                        <section class="magazine-info-card magazine-story-card">
+                            <div>
+                                <p class="magazine-eyebrow">The story</p>
+                                <h2>Our story</h2>
+                                <p class="magazine-card-copy">@GetIntroductionPreview()</p>
+                                <button type="button" class="magazine-dark-button" @onclick="OpenIntroduction">Read more <span aria-hidden="true">→</span></button>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(storyPhotoId))
+                            {
+                                <img src="@GetPhotoThumbnailUrl(storyPhotoId)" alt="A photo from @album.Name" loading="lazy" />
+                            }
+                        </section>
+
+                        <section class="magazine-info-card magazine-stats-card">
+                            <p class="magazine-eyebrow">The journey</p>
+                            <h2>Trip statistics</h2>
+                            <div class="magazine-stats">
+                                <div><strong>@photos.Count</strong><span>Photos</span></div>
+                                <div><strong>@GetTravelDayLabel()</strong><span>Days</span></div>
+                                @if (album.ShowRouteOnCover && HasRoute)
+                                {
+                                    <button type="button" class="magazine-distance-stat" @onclick="OpenRouteMap">
+                                        <strong>@GetDistanceNumber()</strong><span>km · route</span>
+                                    </button>
+                                }
+                            </div>
+                        </section>
+
+                        @if (album.ShowRouteOnCover && HasRoute)
+                        {
+                            <section class="magazine-info-card magazine-route-card">
+                                <div class="magazine-route-heading">
+                                    <div>
+                                        <p class="magazine-eyebrow">The way we went</p>
+                                        <h2>Our route</h2>
+                                    </div>
+                                    <button type="button" class="magazine-text-button" @onclick="OpenRouteMap">View full map →</button>
+                                </div>
+                                <p class="magazine-route-stops">@GetRouteSummary()</p>
+                                <button type="button" class="magazine-route-open" @onclick="OpenRouteMap">Explore route <span aria-hidden="true">↗</span></button>
+                            </section>
+                        }
+                    </div>
+
+                    @if (chapters.Count > 0)
+                    {
+                        <section class="magazine-chapters">
+                            <div class="magazine-section-heading">
+                                <div>
+                                    <p class="magazine-eyebrow">Explore our journey day by day</p>
+                                    <h2>Chapters</h2>
+                                </div>
+                                <span>@chapters.Count chapters</span>
+                            </div>
+                            <div class="magazine-chapter-grid">
+                                @foreach (var chapter in chapters)
+                                {
+                                    <button type="button" class="magazine-chapter-card" @onclick="() => OpenChapter(chapter.Id)">
+                                        @if (!string.IsNullOrWhiteSpace(chapter.ThumbnailPhotoId))
+                                        {
+                                            <img src="@GetPhotoThumbnailUrl(chapter.ThumbnailPhotoId)" alt="" loading="lazy" />
+                                        }
+                                        else
+                                        {
+                                            <span class="magazine-chapter-placeholder" aria-hidden="true">✦</span>
+                                        }
+                                        <span class="magazine-chapter-copy">
+                                            <span class="magazine-chapter-date">@chapter.DateLabel</span>
+                                            <strong>@chapter.Title</strong>
+                                            <span>@chapter.Days day@(chapter.Days == 1 ? "" : "s") · @chapter.Photos.Count photo@(chapter.Photos.Count == 1 ? "" : "s")</span>
+                                        </span>
+                                        <span class="magazine-chapter-arrow" aria-hidden="true">→</span>
+                                    </button>
+                                }
+                            </div>
+                        </section>
+                    }
+
+                    <footer class="magazine-footer-quote">
+                        <span aria-hidden="true">✦</span>
+                        <p>Every photograph holds a story worth revisiting.</p>
+                        <button type="button" class="magazine-dark-button" @onclick="StartAlbum">View album <span aria-hidden="true">→</span></button>
+                    </footer>
+                </div>
+            </section>
+        }
+        else if (currentViewIndex == 1)
+        {
+            <article class="magazine-read-more">
+                <button type="button" class="magazine-text-button" @onclick="() => currentViewIndex = 0">← Back to cover</button>
+                <p class="magazine-eyebrow">The story behind the photographs</p>
+                <h1>@album.Name</h1>
+                @if (string.IsNullOrWhiteSpace(album.Intro))
+                {
+                    <p class="magazine-empty-intro">No introduction has been added yet.</p>
+                }
+                else
+                {
+                    <div class="magazine-introduction-content">
+                        @((MarkupString)Markdown.ToHtml(album.Intro))
+                    </div>
+                }
+            </article>
+        }
+        else if (currentContentPage is not null)
+        {
+            <div class="layout-viewer-page">
                 <LayoutPageRenderer AlbumId="@album.Id"
                                     TemplateId="@currentContentPage.TemplateId"
                                     Photos="@currentContentPage.Photos"
                                     Appearance="@currentContentPage.Appearance"
                                     PhotoLookup="@photoLookup"
-                                     Editable="false"
-                                     PresentationMode="@SharedLink" />
-            }
-        </div>
+                                    Editable="false"
+                                    PresentationMode="@SharedLink" />
+            </div>
+        }
 
-        <div class="layout-viewer-nav d-flex justify-content-between align-items-center mt-3">
-            <button type="button" class="btn btn-primary" @onclick="PreviousPage" disabled="@(currentViewIndex == 0)">
-                &larr; Previous
-            </button>
-            <span class="layout-viewer-pagelabel">@GetPageLabel()</span>
-            <button type="button" class="btn btn-primary" @onclick="NextPage" disabled="@(currentViewIndex >= totalPages - 1)">
-                Next &rarr;
-            </button>
-        </div>
-    </div>
+        @if (routeMapOpen)
+        {
+            <div class="magazine-map-backdrop" role="presentation" @onclick="CloseRouteMap">
+                <section class="magazine-map-dialog" role="dialog" aria-modal="true" aria-labelledby="route-map-title" @onclick:stopPropagation="true">
+                    <div class="magazine-map-dialog-header">
+                        <div>
+                            <p class="magazine-eyebrow">The way we went</p>
+                            <h2 id="route-map-title">Our route</h2>
+                        </div>
+                        <button type="button" class="magazine-map-close" aria-label="Close map" @onclick="CloseRouteMap">×</button>
+                    </div>
+                    <div id="travelMap" class="magazine-map-canvas"></div>
+                    <p class="magazine-map-distance">@GetRouteSummary() <strong>@GetDistanceLabel()</strong></p>
+                </section>
+            </div>
+        }
+
+        @if (currentViewIndex > 0 && currentViewIndex < totalPages && activeChapter is null)
+        {
+            <nav class="magazine-page-nav" aria-label="Album pages">
+                <button type="button" class="magazine-text-button" @onclick="PreviousPage">← Previous</button>
+                <span>@GetPageLabel()</span>
+                <button type="button" class="magazine-text-button" @onclick="NextPage" disabled="@(currentViewIndex >= totalPages - 1)">Next →</button>
+            </nav>
+        }
+    </main>
 }
 
 @code {
@@ -110,10 +244,18 @@ else
     private Album? album;
     private ViewableAlbumLayout? albumLayout;
     private Dictionary<string, AlbumPhoto> photoLookup = new(StringComparer.OrdinalIgnoreCase);
+    private List<AlbumPhoto> photos = [];
+    private List<DisplayChapter> chapters = [];
     private int currentViewIndex;
     private int totalPages;
     private LayoutPage? currentContentPage;
     private bool canEdit;
+    private string? activeChapterId;
+    private bool routeMapOpen;
+    private bool routeMapInitialized;
+    private DisplayChapter? activeChapter => chapters.FirstOrDefault(chapter => chapter.Id == activeChapterId);
+    private bool HasRoute => album?.TripGraph?.Legs.Any(leg =>
+        leg.From.HasGeoPoint() && leg.To.HasGeoPoint()) == true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -123,8 +265,12 @@ else
 
         albumLayout = Catalog.GetLayout(Id);
 
-        var photos = Catalog.ListPhotos(Id);
+        photos = Catalog.ListPhotos(Id).ToList();
         photoLookup = photos.ToDictionary(photo => photo.Id, StringComparer.OrdinalIgnoreCase);
+        album.Chapters ??= [];
+        foreach (var chapter in album.Chapters)
+            chapter.PhotoIds ??= [];
+        BuildChapters();
         totalPages = 2 + (albumLayout?.Pages.Count ?? 0);
         UpdateCurrentContentPage();
 
@@ -134,34 +280,229 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (album is not null && albumLayout is not null && currentViewIndex == 1)
+        if (routeMapOpen && !routeMapInitialized && album is not null)
         {
             await JS.InvokeVoidAsync("travelMap.initialize");
             await JS.InvokeVoidAsync("travelMap.refresh", album.TripGraph);
+            routeMapInitialized = true;
+        }
+        else if (!routeMapOpen)
+            routeMapInitialized = false;
+    }
+
+    private string GetCoverTitle() =>
+        !string.IsNullOrWhiteSpace(albumLayout?.Title) ? albumLayout.Title : album?.Name ?? "Our journey";
+
+    private string GetCoverSubtitle()
+    {
+        var subtitle = !string.IsNullOrWhiteSpace(albumLayout?.Subtitle)
+            ? albumLayout.Subtitle
+            : album?.FullDescription;
+        if (string.IsNullOrWhiteSpace(subtitle))
+            return string.Empty;
+
+        const int maxLength = 180;
+        var normalized = string.Join(' ', subtitle.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return normalized.Length <= maxLength ? normalized : normalized[..(maxLength - 1)].TrimEnd() + "…";
+    }
+
+    private string GetCoverStyle()
+    {
+        var photoId = GetCoverPhotoId();
+        return !string.IsNullOrWhiteSpace(photoId)
+            ? $"background-image: linear-gradient(180deg, rgba(15, 23, 32, .12) 5%, rgba(15, 23, 32, .12) 35%, rgba(15, 23, 32, .82) 100%), url('/albums/{album!.Id}/photos/{photoId}/thumbnail')"
+            : "background-image: linear-gradient(135deg, #637b85, #26343b 70%, #b87d55)";
+    }
+
+    private string? GetCoverPhotoId()
+    {
+        if (!string.IsNullOrWhiteSpace(albumLayout?.CoverPhotoId)
+            && photoLookup.TryGetValue(albumLayout.CoverPhotoId, out var selectedCover)
+            && !PhotoType.IsVideo(selectedCover))
+            return selectedCover.Id;
+
+        return photos
+            .Where(photo => !PhotoType.IsVideo(photo))
+            .OrderByDescending(photo => photo.PixelWidth.HasValue && photo.PixelHeight.HasValue
+                && photo.PixelWidth.Value > photo.PixelHeight.Value)
+            .ThenByDescending(photo => photo.PixelWidth.GetValueOrDefault())
+            .Select(photo => photo.Id)
+            .FirstOrDefault();
+    }
+
+    private string? storyPhotoId => GetCoverPhotoId();
+
+    private string GetIntroductionPreview() =>
+        !string.IsNullOrWhiteSpace(album?.FullDescription)
+            ? album.FullDescription
+            : "A collection of moments, places and memories captured along the way.";
+
+    private string GetTravelPeriod()
+    {
+        var start = album?.TravelStartDate
+            ?? photos.Select(photo => (DateTime?)AlbumCatalog.GetDisplayDate(photo)).Min()
+            ?? album?.TripGraph?.Legs.Select(leg => leg.StartDate).Where(date => date.HasValue).Min();
+        var end = album?.TravelEndDate
+            ?? photos.Select(photo => (DateTime?)AlbumCatalog.GetDisplayDate(photo)).Max()
+            ?? album?.TripGraph?.Legs.Select(leg => leg.EndDate).Where(date => date.HasValue).Max();
+
+        if (start is null && end is null)
+            return "Dates not set";
+
+        var first = start?.ToString("d MMM yyyy");
+        var last = end?.ToString("d MMM yyyy");
+        return first == last || string.IsNullOrWhiteSpace(last)
+            ? first ?? last!
+            : $"{first ?? "Start date unknown"} – {last}";
+    }
+
+    private int GetTravelDayCount()
+    {
+        var start = album?.TravelStartDate
+            ?? photos.Select(photo => (DateTime?)AlbumCatalog.GetDisplayDate(photo)).Min();
+        var end = album?.TravelEndDate
+            ?? photos.Select(photo => (DateTime?)AlbumCatalog.GetDisplayDate(photo)).Max();
+        return start is null || end is null
+            ? 0
+            : Math.Max(1, (end.Value.Date - start.Value.Date).Days + 1);
+    }
+
+    private string GetTravelDayLabel() =>
+        GetTravelDayCount() is var dayCount && dayCount > 0 ? dayCount.ToString() : "—";
+
+    private double GetTotalDistanceKm() =>
+        album?.TripGraph?.Legs
+            .Where(leg => leg.From.HasGeoPoint() && leg.To.HasGeoPoint())
+            .Sum(leg => leg.DistanceKm ?? leg.CalculateDistanceKm() ?? 0) ?? 0;
+
+    private string GetDistanceNumber() => GetTotalDistanceKm().ToString("N0");
+    private string GetDistanceLabel() => $"{GetDistanceNumber()} km";
+
+    private string GetRouteSummary()
+    {
+        if (!string.IsNullOrWhiteSpace(album?.TripGraph?.RouteDescription))
+            return album.TripGraph.RouteDescription.Trim();
+
+        var places = album?.TripGraph?.Legs
+            .SelectMany(leg => new[] { leg.From.Place, leg.To.Place })
+            .Where(place => !string.IsNullOrWhiteSpace(place))
+            .Aggregate(new List<string>(), (result, place) =>
+            {
+                if (!result.Contains(place, StringComparer.OrdinalIgnoreCase))
+                    result.Add(place);
+                return result;
+            });
+        return places is { Count: > 0 } ? string.Join("  ·  ", places) : "Route details";
+    }
+
+    private void BuildChapters()
+    {
+        chapters.Clear();
+        if (album is null)
+            return;
+
+        var manualIndex = 0;
+        foreach (var chapter in album.Chapters.OrderBy(item => item.StartDate).ThenBy(item => item.Title))
+        {
+            var chapterPhotos = photos
+                .Where(photo => chapter.PhotoIds.Contains(photo.Id, StringComparer.OrdinalIgnoreCase))
+                .OrderBy(photo => AlbumCatalog.GetDisplayDate(photo))
+                .ToList();
+            if (chapterPhotos.Count == 0)
+                continue;
+
+            manualIndex++;
+            var chapterDate = chapter.StartDate ?? AlbumCatalog.GetDisplayDate(chapterPhotos[0]);
+            var title = album.UseChapterTitles && !string.IsNullOrWhiteSpace(chapter.Title)
+                ? chapter.Title
+                : album.UseChapterTitles ? $"Chapter {manualIndex}" : chapterDate.ToString("d MMM yyyy");
+            var thumbnailId = chapterPhotos.Any(photo =>
+                    photo.Id == chapter.ThumbnailPhotoId && !PhotoType.IsVideo(photo))
+                ? chapter.ThumbnailPhotoId
+                : chapterPhotos.FirstOrDefault(photo => !PhotoType.IsVideo(photo))?.Id;
+            chapters.Add(new DisplayChapter(
+                chapter.Id,
+                title,
+                chapterDate.ToString("d MMM yyyy"),
+                thumbnailId,
+                chapterPhotos,
+                GetChapterDayCount(chapter, chapterPhotos)));
+        }
+
+        if (album.Chapters.Count > 0)
+            return;
+
+        var dateGroups = photos
+            .GroupBy(photo => AlbumCatalog.GetDisplayDate(photo).Date)
+            .OrderBy(group => group.Key)
+            .ToList();
+        for (var index = 0; index < dateGroups.Count; index++)
+        {
+            var group = dateGroups[index];
+            var dateLabel = group.Key.ToString("d MMM yyyy");
+            var title = album.UseChapterTitles ? $"Chapter {manualIndex + index + 1}" : dateLabel;
+            var groupPhotos = group.OrderBy(photo => AlbumCatalog.GetDisplayDate(photo)).ToList();
+            chapters.Add(new DisplayChapter(
+                $"date-{group.Key:yyyyMMdd}",
+                title,
+                dateLabel,
+                groupPhotos.FirstOrDefault(photo => !PhotoType.IsVideo(photo))?.Id,
+                groupPhotos,
+                1));
         }
     }
 
-    private static string GetBackgroundStyle(BackGroundFill? fill)
+    private int GetChapterDayCount(AlbumChapter chapter, IReadOnlyList<AlbumPhoto> chapterPhotos)
     {
-    if (fill is null)
-        return "";
+        if (chapter.StartDate is DateTime start)
+        {
+            var nextChapterStart = album?.Chapters
+                .Where(candidate => candidate.Id != chapter.Id
+                    && candidate.StartDate.HasValue
+                    && candidate.StartDate.Value.Date > start.Date)
+                .Select(candidate => (DateTime?)candidate.StartDate!.Value.Date)
+                .OrderBy(date => date)
+                .FirstOrDefault();
+            var nextEnd = nextChapterStart?.AddDays(-1);
+            var end = chapter.EndDate?.Date is DateTime explicitEnd && nextEnd.HasValue
+                ? (explicitEnd < nextEnd.Value ? explicitEnd : nextEnd.Value)
+                : chapter.EndDate?.Date ?? nextEnd ?? start.Date;
+            return Math.Max(1, (end - start.Date).Days + 1);
+        }
 
-    if (!string.IsNullOrWhiteSpace(fill.ImagePath))
-    {
-        return $"background-image: url('{fill.ImagePath}');";
+        return Math.Max(1, chapterPhotos
+            .Select(photo => AlbumCatalog.GetDisplayDate(photo).Date)
+            .Distinct()
+            .Count());
     }
 
-    if (!string.IsNullOrWhiteSpace(fill.BackroundColor))
+    private void OpenChapter(string chapterId)
     {
-        return $"background-color: {fill.BackroundColor};";
+        activeChapterId = chapterId;
+        routeMapOpen = false;
     }
 
-    return "";
-}
+    private void CloseChapter() => activeChapterId = null;
+    private void OpenIntroduction() => currentViewIndex = 1;
+    private void OpenRouteMap() => routeMapOpen = HasRoute;
+    private void CloseRouteMap() => routeMapOpen = false;
 
+    private void StartAlbum()
+    {
+        if (albumLayout?.Pages.Count > 0)
+            currentViewIndex = 2;
+        else if (chapters.Count > 0)
+            activeChapterId = chapters[0].Id;
+        else
+            currentViewIndex = 1;
+        UpdateCurrentContentPage();
+    }
 
     private void HandleKeyDown(KeyboardEventArgs args)
     {
+        if (routeMapOpen || activeChapter is not null)
+            return;
+
         if (args.Key is "ArrowLeft" or "ArrowUp")
             PreviousPage();
         else if (args.Key is "ArrowRight" or "ArrowDown")
@@ -201,12 +542,20 @@ else
 
     private string GetPageLabel()
     {
-        if (currentViewIndex == 0)
-            return "Title page";
-
         if (currentViewIndex == 1)
-            return "Introduction";
+            return "The story";
 
-        return $"Page {currentViewIndex - 1} of {totalPages - 2}";
+        return $"Page {currentViewIndex - 1} of {Math.Max(0, totalPages - 2)}";
     }
+
+    private string GetPhotoUrl(string photoId) => $"/albums/{album!.Id}/photos/{photoId}/content";
+    private string GetPhotoThumbnailUrl(string photoId) => $"/albums/{album!.Id}/photos/{photoId}/thumbnail";
+
+    private sealed record DisplayChapter(
+        string Id,
+        string Title,
+        string DateLabel,
+        string? ThumbnailPhotoId,
+        List<AlbumPhoto> Photos,
+        int Days);
 }

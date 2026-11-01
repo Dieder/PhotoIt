@@ -10,6 +10,8 @@ public sealed class AlbumPhoto
     public string UserId { get; set; } = string.Empty;  
     public string AlbumId { get; set; } = string.Empty;
     public string BlobName { get; set; } = string.Empty;
+    public string? ThumbnailBlobName { get; set; }
+    public bool ThumbnailUnavailable { get; set; }
     public string OriginalFileName { get; set; } = string.Empty;
     public string ContentType { get; set; } = "application/octet-stream";
     public long Length { get; set; }

@@ -48,19 +48,16 @@ else
 
     <div class="album-toolbar">
 
-        @if (hasLayout)
-        {
-            <a class="toolbar-button primary"
-               href="/albums/@album.Id/layout/view">
+        <a class="toolbar-button primary"
+           href="/albums/@album.Id/layout/view">
 
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" stroke-width="2" />
-                    <circle cx="12" cy="12" r="3" stroke-width="2" />
-                </svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" stroke-width="2" />
+                <circle cx="12" cy="12" r="3" stroke-width="2" />
+            </svg>
 
-                <span>View Album</span>
-            </a>
-        }
+            <span>View Album</span>
+        </a>
 
         @if (canEdit)
         {
@@ -253,7 +250,7 @@ else
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         canEdit = CurrentUserHelper.GetUserId(authState.User) == album?.UserId;
-        if (canEdit && album is not null && hasLayout)
+        if (canEdit && album is not null)
         {
             var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
             Catalog.EnsureShareLink(album);
