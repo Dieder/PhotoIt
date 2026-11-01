@@ -6,7 +6,6 @@
 @using PhotoIt.AiOrchestration
 @using AiFoundryLocal
 @using Microsoft.AspNetCore.Components.Forms
-@using Microsoft.JSInterop
 @inject AlbumCatalog Catalog
 @inject AzurePhotoStorage Storage
 @inject PhotoThumbnailService Thumbnails
@@ -43,14 +42,16 @@ else
                         type="button"
                         role="tab"
                         aria-selected="@(activeTab == "all")"
-                        @onclick='() => activeTab = "all"'>All</button>
+                        @onclick='() => SetActiveTab("all")'>All</button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link @(activeTab == "chapters" ? "active" : "")"
                         type="button"
                         role="tab"
                         aria-selected="@(activeTab == "chapters")"
-                        @onclick='() => activeTab = "chapters"'>Chapters</button>
+                        data-photo-upload-chapter-tab
+                        disabled="@isUploading"
+                        @onclick='() => SetActiveTab("chapters")'>Chapters</button>
             </li>
         </ul>
     }
@@ -64,14 +65,15 @@ else
             <div class="photo-upload-dropzone" data-file-dropzone>
                 <InputFile id="photo-upload"
                            class="photo-upload-input"
-                           data-file-upload-batch
+                           data-photo-upload-input
+                           data-max-files="@MaxUploadFileCount"
                            OnChange="UploadAsync"
                            multiple
                            accept="image/*,.jpg,.rw2,.mp4"
                            disabled="@isUploading" />
                 <div class="photo-upload-prompt" aria-hidden="true">
                     <strong>Drop photos here or click to choose files</strong>
-                    <span>Images and MP4 videos are supported; up to 60 files per batch.</span>
+                    <span>Images and MP4 videos are supported; up to 1,000 files per upload.</span>
                 </div>
             </div>
             <div class="form-text">Images and MP4 videos are stored in Azure Blob Storage under @album.ImageFolderName. Videos can be placed in Page L slots and play automatically in the album viewer.</div>
@@ -379,8 +381,6 @@ else
 
 @code {
     private const int MaxUploadFileCount = 1000;
-    private const int UploadBatchSize = 60;
-    private const string PhotoUploadInputId = "photo-upload";
 
     [Parameter]
     public string Id { get; set; } = string.Empty;
@@ -549,35 +549,29 @@ else
         if (args.FileCount == 0)
             return;
 
-        var totalFiles = await JS.InvokeAsync<int>(
-            "photoUpload.getTotal",
-            PhotoUploadInputId,
-            args.FileCount);
-        if (totalFiles > MaxUploadFileCount)
+        if (args.FileCount > MaxUploadFileCount)
         {
-            await JS.InvokeVoidAsync("photoUpload.abort", PhotoUploadInputId);
-            uploadTotal = totalFiles;
+            uploadTotal = args.FileCount;
             uploadProgress = 0;
             uploadStatus = "Too many files";
-            errorMessage = $"Select no more than {UploadBatchSize:N0} files per upload.";
+            errorMessage = $"Select no more than {MaxUploadFileCount:N0} files per upload.";
             return;
         }
 
         if (!isUploading)
         {
             isUploading = true;
-            uploadTotal = totalFiles;
+            uploadTotal = args.FileCount;
             uploadProgress = 0;
             uploadStatus = "Uploading...";
             errorMessage = null;
         }
 
-        var uploadContinues = false;
         System.Diagnostics.Activity? uploadActivity = null;
 
         try
         {
-            var files = args.GetMultipleFiles(UploadBatchSize);
+            var files = args.GetMultipleFiles(MaxUploadFileCount);
             foreach (var file in files)
             {
                 uploadActivity = PhotoItTelemetry.ActivitySource.StartActivity("photo.upload");
@@ -669,17 +663,12 @@ else
                 await InvokeAsync(StateHasChanged);
             }
 
-            uploadContinues = await JS.InvokeAsync<bool>("photoUpload.advance", PhotoUploadInputId);
-            if (uploadContinues)
-                return;
-
             await Catalog.TouchAsync(album.Id);
             await LoadPhotosAsync();
             uploadStatus = "Completed";
         }
         catch (Exception exception)
         {
-            await JS.InvokeVoidAsync("photoUpload.abort", PhotoUploadInputId);
             uploadActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Media upload failed");
             uploadActivity?.Dispose();
             PhotoItTelemetry.RecordPhotoUploadFailure();
@@ -689,14 +678,24 @@ else
         }
         finally
         {
-            if (!uploadContinues)
+            isUploading = false;
+            if (uploadProgress >= uploadTotal)
+                uploadProgress = uploadTotal;
+            try
             {
-                isUploading = false;
-                if (uploadProgress >= uploadTotal)
-                    uploadProgress = uploadTotal;
+                await JS.InvokeVoidAsync("photoUpload.setUploading", false);
+            }
+            catch (JSDisconnectedException)
+            {
             }
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private void SetActiveTab(string tab)
+    {
+        if (!isUploading)
+            activeTab = tab;
     }
 
     private async Task DeleteAsync(AlbumPhoto photo)

@@ -444,24 +444,29 @@
         errorMessage = null;
         statusMessage = null;
 
-        placeSearchCts?.Cancel();
-        placeSearchCts?.Dispose();
+        var previousSearchCts = placeSearchCts;
         var searchCts = new CancellationTokenSource();
         placeSearchCts = searchCts;
-
-        if (point.Place.Trim().Length < 3)
-        {
-            await RefreshMapDisplayAsync();
-            return;
-        }
-
-        await RefreshMapDisplayAsync();
+        previousSearchCts?.Cancel();
 
         try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(500), searchCts.Token);
+            if (point.Place.Trim().Length < 3)
+            {
+                await RefreshMapDisplayAsync();
+                return;
+            }
+
+            await RefreshMapDisplayAsync();
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            if (searchCts.IsCancellationRequested || !ReferenceEquals(placeSearchCts, searchCts))
+                return;
+
             var suggestions = await NominatimClient.SearchPlacesAsync(point.Place.Trim(), ct: searchCts.Token);
-            if (searchCts.IsCancellationRequested || !ReferenceEquals(suggestionPoint, point))
+            if (searchCts.IsCancellationRequested ||
+                !ReferenceEquals(placeSearchCts, searchCts) ||
+                !ReferenceEquals(suggestionPoint, point))
                 return;
 
             placeSuggestions = suggestions;
@@ -477,6 +482,12 @@
             if (!searchCts.IsCancellationRequested)
                 errorMessage = $"Place search failed: {exception.Message}";
         }
+        finally
+        {
+            if (ReferenceEquals(placeSearchCts, searchCts))
+                placeSearchCts = null;
+            searchCts.Dispose();
+        }
     }
 
     private IReadOnlyList<GeoPoint> GetPlaceSuggestions(RoutePoint point) =>
@@ -484,7 +495,7 @@
 
     private async Task SelectPlaceAsync(RoutePoint point, GeoPoint place)
     {
-        placeSearchCts?.Cancel();
+        CancelPlaceSearch();
         point.Place = place.Name;
         point.Id = place.Name;
         point.FoundName = place.Name;
@@ -502,7 +513,7 @@
 
     private async Task ResolveTypedPlaceAsync(RoutePoint point)
     {
-        placeSearchCts?.Cancel();
+        CancelPlaceSearch();
         if (string.IsNullOrWhiteSpace(point.Place)
             || point.Place.Trim().Length < 3
             || string.Equals(point.Place, point.Id, StringComparison.OrdinalIgnoreCase))
@@ -540,6 +551,13 @@
     {
         foreach (var leg in Model.Legs)
             leg.DistanceKm = leg.CalculateDistanceKm();
+    }
+
+    private void CancelPlaceSearch()
+    {
+        var searchCts = placeSearchCts;
+        placeSearchCts = null;
+        searchCts?.Cancel();
     }
 
     private static string FormatTravelDates(RouteLeg leg)
@@ -644,8 +662,7 @@
 
     public async ValueTask DisposeAsync()
     {
-        placeSearchCts?.Cancel();
-        placeSearchCts?.Dispose();
+        CancelPlaceSearch();
         if (mapCallback is not null)
         {
             try

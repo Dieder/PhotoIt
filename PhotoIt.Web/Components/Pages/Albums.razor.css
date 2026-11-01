@@ -1,0 +1,40 @@
+.cover-photo-picker summary {
+    color: #0d6efd;
+    cursor: pointer;
+    font-size: .9rem;
+    font-weight: 600;
+}
+
+.cover-photo-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+    gap: .5rem;
+    max-height: 15rem;
+    overflow-y: auto;
+    margin: .75rem 0;
+}
+
+.cover-photo-option {
+    overflow: hidden;
+    aspect-ratio: 1;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: .4rem;
+    background: #e9ecef;
+    cursor: pointer;
+}
+
+.cover-photo-option.selected {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 2px rgb(13 110 253 / 18%);
+}
+
+.cover-photo-option:disabled {
+    cursor: wait;
+}
+
+.cover-photo-option img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
