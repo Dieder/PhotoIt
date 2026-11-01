@@ -14,7 +14,7 @@
         <h1 class="h3 mb-1">Telemetry dashboard</h1>
         <p class="text-muted mb-0">Application activity for today (UTC).</p>
     </div>
-    <button class="btn btn-outline-primary" @onclick="Refresh">Refresh</button>
+    <button class="btn btn-outline-primary" @onclick="RefreshAsync">Refresh</button>
 </div>
 
 <div class="row row-cols-1 row-cols-md-3 g-3">
@@ -53,15 +53,18 @@
     private int albumsCreatedToday;
     private int photosUploadedToday;
 
-    protected override void OnInitialized() => Refresh();
+    protected override Task OnInitializedAsync() => RefreshAsync();
 
-    private void Refresh()
+    private async Task RefreshAsync()
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var albums = Catalog.List();
+        var albums = await Catalog.ListAsync();
         albumsCreatedToday = albums.Count(album => DateOnly.FromDateTime(album.CreatedUtc) == today);
-        photosUploadedToday = albums
-            .SelectMany(album => Catalog.ListPhotos(album.Id))
-            .Count(photo => DateOnly.FromDateTime(photo.UploadedUtc) == today);
+        photosUploadedToday = 0;
+        foreach (var album in albums)
+        {
+            var photos = await Catalog.ListPhotosAsync(album.Id);
+            photosUploadedToday += photos.Count(photo => DateOnly.FromDateTime(photo.UploadedUtc) == today);
+        }
     }
 }

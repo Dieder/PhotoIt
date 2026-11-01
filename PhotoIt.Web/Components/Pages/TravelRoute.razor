@@ -268,7 +268,7 @@
             throw new InvalidOperationException("AlbumId parameter is required.");
         }
 
-        album = Catalog.Get(AlbumId) ?? throw new InvalidDataException("Album not found");
+        album = await Catalog.GetAsync(AlbumId) ?? throw new InvalidDataException("Album not found");
         Model = album.TripGraph ?? new TripGraph();
         Model.Legs.Where(x=>x.IsValid()).ToList().ForEach(leg =>
         {
@@ -589,7 +589,7 @@
                 leg.IsEditing = false;
             }
             album.TripGraph = Model;
-            if (!Catalog.Update(album))
+            if (!await Catalog.UpdateAsync(album))
             {
                 PhotoItTelemetry.RecordAlbumSave(false);
                 errorMessage = "The route could not be saved.";

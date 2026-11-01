@@ -30,7 +30,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        var album = Catalog.Get(Id);
+        var album = await Catalog.GetAsync(Id);
         if (album is null)
         {
             Navigation.NavigateTo("albums");

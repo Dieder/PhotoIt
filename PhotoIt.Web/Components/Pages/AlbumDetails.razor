@@ -181,8 +181,6 @@ else
             <!-- Description -->
             @if (!string.IsNullOrWhiteSpace(album.FullDescription))
             {
-               var layout = Catalog.GetLayout(album.Id);
-               var coverPhotoId = layout?.CoverPhotoId;
                 <p class="album-description text-secondary mb-4">
                     @album.FullDescription
                 </p>
@@ -280,6 +278,7 @@ else
 
     private Album? album;
     private bool hasLayout;
+    private string? coverPhotoId;
     private bool canEdit;
     private string? shareUrl;
     private bool shareCopied;
@@ -291,15 +290,17 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        album = Catalog.Get(Id);
-        hasLayout = album is not null && Catalog.HasLayout(Id);
+        album = await Catalog.GetAsync(Id);
+        var layout = await Catalog.GetLayoutAsync(Id);
+        hasLayout = layout is not null;
+        coverPhotoId = layout?.CoverPhotoId;
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         canEdit = CurrentUserHelper.GetUserId(authState.User) == album?.UserId;
         if (canEdit && album is not null)
         {
             var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
-            Catalog.EnsureShareLink(album);
+            await Catalog.EnsureShareLinkAsync(album);
             if (shareLinkCreated)
             {
                 PhotoItTelemetry.RecordShareCreated();
@@ -319,7 +320,7 @@ else
         shareCopied = true;
     }
 
-    private void ShowDeleteConfirmation()
+    private async Task ShowDeleteConfirmation()
     {
         if (album is null)
             return;
@@ -327,8 +328,8 @@ else
         deleteError = null;
         try
         {
-            deletePhotos = Catalog.ListPhotos(Id);
-            var coverPhotoId = Catalog.GetLayout(Id)?.CoverPhotoId;
+            deletePhotos = await Catalog.ListPhotosAsync(Id);
+            var coverPhotoId = (await Catalog.GetLayoutAsync(Id))?.CoverPhotoId;
             deleteCoverPhotoId = deletePhotos.FirstOrDefault(photo => photo.Id == coverPhotoId)?.Id;
             showDeleteConfirmation = true;
         }
@@ -368,7 +369,7 @@ else
                 await Storage.DeleteAsync(blobName!);
 
             storageDeletionComplete = true;
-            if (Catalog.Delete(Id))
+            if (await Catalog.DeleteAsync(Id))
             {
                 PhotoItTelemetry.RecordAlbumDeleted();
                 Logger.LogInformation("Album deleted. AlbumId: {AlbumId}", Id);

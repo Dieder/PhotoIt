@@ -12,10 +12,11 @@ using Microsoft.Extensions.Http;
 using ImageMagick;
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString = builder.Configuration.GetConnectionString("AlbumWebContext")
-    ?? throw new InvalidOperationException("Connection string 'AlbumWebContext' not found. Configure it through environment variables or user secrets.");
+var connectionString = builder.Configuration["CosmosdbConnection"]
+    ?? throw new InvalidOperationException("Cosmos DB connection string 'CosmosdbConnection' not found. Configure Parameters:CosmosdbConnection in the AppHost user secrets.");
 
-builder.Services.AddDbContextFactory<AlbumWebContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddDbContextFactory<AlbumWebContext>(options =>
+    options.UseCosmos(connectionString, "PhotoIt"));
 
 // Add service defaults & Aspire client integrations.
 builder.AddServiceDefaults();
@@ -121,7 +122,7 @@ app.MapGet("/albums/{albumId}/photos/{photoId}/content", async (
     AzurePhotoStorage storage,
     CancellationToken ct) =>
 {
-    var photo = catalog.GetPhoto(albumId, photoId);
+    var photo = await catalog.GetPhotoAsync(albumId, photoId, ct);
     if (photo is null)
         return Results.NotFound();
 
@@ -140,7 +141,7 @@ app.MapGet("/albums/{albumId}/photos/{photoId}/thumbnail", async (
     CancellationToken ct) =>
 {
     httpContext.Response.Headers.CacheControl = "private, max-age=86400";
-    var photo = catalog.GetPhoto(albumId, photoId);
+    var photo = await catalog.GetPhotoAsync(albumId, photoId, ct);
     if (photo is null)
         return Results.NotFound();
 
@@ -166,7 +167,7 @@ app.MapGet("/albums/{albumId}/photos/{photoId}/thumbnail", async (
     catch (MagickException exception)
     {
         photo.ThumbnailUnavailable = true;
-        catalog.UpdatePhoto(photo);
+        await catalog.UpdatePhotoAsync(photo, ct);
         logger.LogWarning(exception, "Could not create photo thumbnail. AlbumId: {AlbumId}, MediaId: {MediaId}", albumId, photoId);
         return Results.Redirect($"/albums/{albumId}/photos/{photoId}/content");
     }
@@ -181,7 +182,7 @@ app.MapGet("/albums/{albumId}/photos/{photoId}/thumbnail", async (
         ct,
         overwrite: true);
     photo.ThumbnailBlobName = thumbnailBlobName;
-    catalog.UpdatePhoto(photo);
+    await catalog.UpdatePhotoAsync(photo, ct);
 
     return Results.File(new MemoryStream(thumbnail), "image/jpeg", enableRangeProcessing: true);
 });
@@ -196,8 +197,8 @@ app.MapAdditionalIdentityEndpoints();;
 using (var scope = app.Services.CreateScope())
 {
     var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AlbumWebContext>>();
-    using var db = dbFactory.CreateDbContext();
-    db.Database.Migrate();
+    await using var db = await dbFactory.CreateDbContextAsync();
+    await db.Database.EnsureCreatedAsync();
 }
 
 app.Run();

@@ -89,18 +89,18 @@ else
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         isAuthenticated = authState.User?.Identity?.IsAuthenticated ?? false;
         var currentUserId = CurrentUserHelper.GetUserId(authState.User);
-        albums = Catalog.List();
+        albums = await Catalog.ListAsync();
 
         foreach (var album in albums)
         {
-            var layout = Catalog.GetLayout(album.Id);
+            var layout = await Catalog.GetLayoutAsync(album.Id);
             if (!string.IsNullOrWhiteSpace(layout?.CoverPhotoId))
                 coverPhotoIds[album.Id] = layout.CoverPhotoId;
 
             if (isAuthenticated && currentUserId == album.UserId && layout is not null)
             {
                 var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
-                Catalog.EnsureShareLink(album);
+                await Catalog.EnsureShareLinkAsync(album);
                 if (shareLinkCreated)
                 {
                     PhotoItTelemetry.RecordShareCreated();

@@ -9,6 +9,10 @@
         string? PhotoId = null
     )
     {
+        public PhotoSlot() : this(1, 1, PhotoType.Square)
+        {
+        }
+
         public string? PhotoId { get; set; } = PhotoId;
         public double? OffsetX { get; set; }
         public double? OffsetY { get; set; }

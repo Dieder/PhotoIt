@@ -193,7 +193,7 @@
         await base.OnInitializedAsync();
     }
 
-    private Task SaveAsync()
+    private async Task SaveAsync()
     {
         using var activity = PhotoItTelemetry.ActivitySource.StartActivity("album.save");
         activity?.SetTag("album.operation", IsNew ? "create" : "update");
@@ -204,19 +204,28 @@
             Model.UserId = emailClaim?.Value ?? user?.Identity?.Name ?? throw new UnauthorizedAccessException("no user found");
         }
         errorMessage = null;
-        if (Catalog.ImageFolderNameExists(Model.ImageFolderName, IsNew ? null : Model.Id))
+       
+
+        if (IsNew && string.IsNullOrEmpty(Model.ImageFolderName))
+        {
+            Model.Id = Guid.NewGuid().ToString();
+            var usernamefromEmail = Model.UserId.Split('@')[0].ToLowerInvariant();
+            Model.ImageFolderName = usernamefromEmail + DateTime.Today.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (IsNew && await Catalog.ImageFolderNameExistsAsync(Model.ImageFolderName))
         {
             PhotoItTelemetry.RecordAlbumSave(false);
             Logger.LogWarning("Album save failed because the image folder name is already in use.");
             errorMessage = "That image folder name is already in use.";
-            return Task.CompletedTask;
+            return;
         }
 
         if (IsNew)
         {
             try
             {
-                Catalog.Create(Model);
+                await Catalog.CreateAsync(Model);
                 PhotoItTelemetry.RecordAlbumCreated();
                 PhotoItTelemetry.RecordAlbumSave(true);
                 Logger.LogInformation("Album created. AlbumId: {AlbumId}", Model.Id);
@@ -227,18 +236,18 @@
                 activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Album creation failed");
                 Logger.LogError(exception, "Album creation failed.");
                 errorMessage = "The album could not be created.";
-                return Task.CompletedTask;
+                return;
             }
         }
         else
         {
-            var album = Catalog.Get(Model.Id);
+            var album = await Catalog.GetAsync(Model.Id);
             if (album is null)
             {
                 PhotoItTelemetry.RecordAlbumSave(false);
                 Logger.LogWarning("Album save failed because the album was not found. AlbumId: {AlbumId}", Model.Id);
                 errorMessage = "The album could not be found.";
-                return Task.CompletedTask;
+                return;
             }
 
             album.Name = Model.Name;
@@ -253,12 +262,12 @@
 
             try
             {
-                if (!Catalog.Update(album))
+                if (!await Catalog.UpdateAsync(album))
                 {
                     PhotoItTelemetry.RecordAlbumSave(false);
                     Logger.LogWarning("Album update failed. AlbumId: {AlbumId}", Model.Id);
                     errorMessage = "The album could not be updated.";
-                    return Task.CompletedTask;
+                    return;
                 }
 
                 PhotoItTelemetry.RecordAlbumSave(true);
@@ -270,11 +279,10 @@
                 activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Album update failed");
                 Logger.LogError(exception, "Album update failed. AlbumId: {AlbumId}", Model.Id);
                 errorMessage = "The album could not be updated.";
-                return Task.CompletedTask;
+                return;
             }
         }
 
         Navigation.NavigateTo($"/albums/{Model.Id}");
-        return Task.CompletedTask;
     }
 }

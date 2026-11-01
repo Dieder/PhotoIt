@@ -12,41 +12,41 @@ public sealed class AlbumCatalog
         _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
     }
 
-    public IReadOnlyList<Album> List()
+    public async Task<IReadOnlyList<Album>> ListAsync(CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        return db.Set<Album>().AsNoTracking()
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<Album>().AsNoTracking()
             .OrderByDescending(album => album.UpdatedUtc)
-            .ToList();
+            .ToListAsync(ct);
     }
 
-    public Album? Get(string id)
+    public async Task<Album?> GetAsync(string id, CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        return db.Set<Album>().AsNoTracking().FirstOrDefault(album => album.Id == id);
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<Album>().AsNoTracking().FirstOrDefaultAsync(album => album.Id == id, ct);
     }
 
-    public string[] PhotoIds(string albumId)
+    public async Task<string[]> PhotoIdsAsync(string albumId, CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        return db.Set<AlbumPhoto>().AsNoTracking()
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<AlbumPhoto>().AsNoTracking()
             .Where(photo => photo.AlbumId == albumId)
             .Select(photo => photo.Id)
-            .ToArray();
+            .ToArrayAsync(ct);
     }
 
-    public Album? GetShared(string slug, int seed)
+    public async Task<Album?> GetSharedAsync(string slug, int seed, CancellationToken ct = default)
     {
         var normalizedSlug = NormalizeShareSlug(slug);
         if (string.IsNullOrWhiteSpace(normalizedSlug) || seed <= 0)
             return null;
 
-        using var db = _contextFactory.CreateDbContext();
-        return db.Set<Album>().AsNoTracking()
-            .FirstOrDefault(album => album.ShareSlug == normalizedSlug && album.ShareSeed == seed);
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<Album>().AsNoTracking()
+            .FirstOrDefaultAsync(album => album.ShareSlug == normalizedSlug && album.ShareSeed == seed, ct);
     }
 
-    public void EnsureShareLink(Album album)
+    public async Task EnsureShareLinkAsync(Album album, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(album);
 
@@ -55,76 +55,82 @@ public sealed class AlbumCatalog
             return;
 
         album.ShareSlug = slug;
-        using var db = _contextFactory.CreateDbContext();
+        await using var db = _contextFactory.CreateDbContext();
         do
         {
             album.ShareSeed = RandomNumberGenerator.GetInt32(100_000, 1_000_000);
         }
-        while (db.Set<Album>().Any(candidate =>
+        while (await db.Set<Album>().AnyAsync(candidate =>
                    candidate.Id != album.Id &&
                    candidate.ShareSlug == album.ShareSlug &&
-                   candidate.ShareSeed == album.ShareSeed));
+                   candidate.ShareSeed == album.ShareSeed, ct));
 
         db.Set<Album>().Update(album);
-        db.SaveChanges();
+        await db.SaveChangesAsync(ct);
     }
 
-    public bool ImageFolderNameExists(string imageFolderName, string? excludingId = null)
-    {
+    public async Task<bool> ImageFolderNameExistsAsync(string imageFolderName, CancellationToken ct = default)
+    {       
         var normalizedName = NormalizeFolderName(imageFolderName);
-        using var db = _contextFactory.CreateDbContext();
-        return db.Set<Album>().Any(album =>
-            album.ImageFolderName == normalizedName &&
-            (excludingId == null || album.Id != excludingId));
+        await using var db = _contextFactory.CreateDbContext();
+        try
+        {
+            return await db.Set<Album>().AnyAsync(album =>
+                album.ImageFolderName == normalizedName);
+        }
+        catch(Exception ex) { 
+            return false; 
+        }
     }
 
-    public void Create(Album album)
+    public async Task CreateAsync(Album album, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(album);
         album.Id = Guid.NewGuid().ToString("N");
         album.CreatedUtc = DateTime.UtcNow;
         album.UpdatedUtc = album.CreatedUtc;
         album.ImageFolderName = $"ALBUM-{album.Id.ToUpperInvariant()}";
-        using var db = _contextFactory.CreateDbContext();
+        await using var db = _contextFactory.CreateDbContext();
         db.Set<Album>().Add(album);
-        db.SaveChanges();
+        await db.SaveChangesAsync(ct);
     }
 
-    public bool Update(Album album)
+    public async Task<bool> UpdateAsync(Album album, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(album);
         album.ImageFolderName = NormalizeFolderName(album.ImageFolderName);
         album.UpdatedUtc = DateTime.UtcNow;
-        using var db = _contextFactory.CreateDbContext();
-        if (!db.Set<Album>().Any(existing => existing.Id == album.Id))
+        await using var db = _contextFactory.CreateDbContext();
+        if (!await db.Set<Album>().AnyAsync(existing => existing.Id == album.Id, ct))
             return false;
 
         db.Set<Album>().Update(album);
-        db.SaveChanges();
+        await db.SaveChangesAsync(ct);
         return true;
     }
 
-    public bool Delete(string id)
+    public async Task<bool> DeleteAsync(string id, CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        using var transaction = db.Database.BeginTransaction();
-        var album = db.Set<Album>().FirstOrDefault(candidate => candidate.Id == id);
+        await using var db = _contextFactory.CreateDbContext();
+        var album = await db.Set<Album>().FirstOrDefaultAsync(candidate => candidate.Id == id, ct);
         if (album is null)
             return false;
 
-        db.Set<AlbumPhoto>().Where(photo => photo.AlbumId == id).ExecuteDelete();
-        db.Set<ViewableAlbumLayout>().Where(layout => layout.AlbumId == id).ExecuteDelete();
+        var photos = await db.Set<AlbumPhoto>().Where(photo => photo.AlbumId == id).ToListAsync(ct);
+        var layout = await db.Set<ViewableAlbumLayout>().FirstOrDefaultAsync(layout => layout.AlbumId == id, ct);
+        db.RemoveRange(photos);
+        if (layout is not null)
+            db.Remove(layout);
         db.Remove(album);
-        db.SaveChanges();
-        transaction.Commit();
+        await db.SaveChangesAsync(ct);
         return true;
     }
 
-    public IReadOnlyList<AlbumPhoto> ListPhotos(string albumId)
+    public async Task<IReadOnlyList<AlbumPhoto>> ListPhotosAsync(string albumId, CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        var photos = db.Set<AlbumPhoto>().Where(photo => photo.AlbumId == albumId)
-            .ToList();
+        await using var db = _contextFactory.CreateDbContext();
+        var photos = await db.Set<AlbumPhoto>().Where(photo => photo.AlbumId == albumId)
+            .ToListAsync(ct);
         photos = photos.OrderByDescending(photo => photo.DateTakenUtc ?? photo.UploadedUtc).ToList();
 
         var changed = false;
@@ -138,7 +144,7 @@ public sealed class AlbumCatalog
         }
 
         if (changed)
-            db.SaveChanges();
+            await db.SaveChangesAsync(ct);
 
         return photos;
     }
@@ -157,76 +163,76 @@ public sealed class AlbumCatalog
             : uploadedUtc.ToLocalTime();
     }
 
-    public void AddPhoto(AlbumPhoto photo)
+    public async Task AddPhotoAsync(AlbumPhoto photo, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(photo);
-        using var db = _contextFactory.CreateDbContext();
+        await using var db = _contextFactory.CreateDbContext();
         db.Set<AlbumPhoto>().Add(photo);
-        db.SaveChanges();
+        await db.SaveChangesAsync(ct);
     }
 
-    public AlbumPhoto? GetPhoto(string albumId, string photoId)
+    public async Task<AlbumPhoto?> GetPhotoAsync(string albumId, string photoId, CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        var photo = db.Set<AlbumPhoto>().FirstOrDefault(photo =>
-            photo.AlbumId == albumId && photo.Id == photoId);
+        await using var db = _contextFactory.CreateDbContext();
+        var photo = await db.Set<AlbumPhoto>().FirstOrDefaultAsync(photo =>
+            photo.AlbumId == albumId && photo.Id == photoId, ct);
         if (photo is not null && NormalizeLegacyAnalysis(photo))
-            db.SaveChanges();
+            await db.SaveChangesAsync(ct);
         return photo;
     }
 
-    public bool DeletePhoto(string id)
+    public async Task<bool> DeletePhotoAsync(string id, CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        var photo = db.Set<AlbumPhoto>().Find(id);
+        await using var db = _contextFactory.CreateDbContext();
+        var photo = await db.Set<AlbumPhoto>().FirstOrDefaultAsync(existing => existing.Id == id, ct);
         if (photo is null)
             return false;
 
         db.Remove(photo);
-        return db.SaveChanges() > 0;
+        return await db.SaveChangesAsync(ct) > 0;
     }
 
-    public bool UpdatePhoto(AlbumPhoto photo)
+    public async Task<bool> UpdatePhotoAsync(AlbumPhoto photo, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(photo);
-        using var db = _contextFactory.CreateDbContext();
-        if (!db.Set<AlbumPhoto>().Any(existing => existing.Id == photo.Id))
+        await using var db = _contextFactory.CreateDbContext();
+        if (!await db.Set<AlbumPhoto>().AnyAsync(existing => existing.Id == photo.Id, ct))
             return false;
 
         db.Set<AlbumPhoto>().Update(photo);
-        db.SaveChanges();
+        await db.SaveChangesAsync(ct);
         return true;
     }
 
-    public void Touch(string albumId)
+    public async Task TouchAsync(string albumId, CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        var album = db.Set<Album>().Find(albumId);
+        await using var db = _contextFactory.CreateDbContext();
+        var album = await db.Set<Album>().FirstOrDefaultAsync(album => album.Id == albumId, ct);
         if (album is null)
             return;
 
         album.UpdatedUtc = DateTime.UtcNow;
-        db.SaveChanges();
+        await db.SaveChangesAsync(ct);
     }
 
-    public ViewableAlbumLayout? GetLayout(string albumId)
+    public async Task<ViewableAlbumLayout?> GetLayoutAsync(string albumId, CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        var layout = db.Set<ViewableAlbumLayout>().AsNoTracking()
-            .FirstOrDefault(layout => layout.AlbumId == albumId);
+        await using var db = _contextFactory.CreateDbContext();
+        var layout = await db.Set<ViewableAlbumLayout>().AsNoTracking()
+            .FirstOrDefaultAsync(layout => layout.AlbumId == albumId, ct);
         if (layout is not null)
             NormalizeLayout(layout);
 
         return layout;
     }
 
-    public bool HasLayout(string albumId)
+    public async Task<bool> HasLayoutAsync(string albumId, CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        return db.Set<ViewableAlbumLayout>().Any(layout => layout.AlbumId == albumId);
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<ViewableAlbumLayout>().AnyAsync(layout => layout.AlbumId == albumId, ct);
     }
 
-    public void SaveLayout(ViewableAlbumLayout layout)
+    public async Task SaveLayoutAsync(ViewableAlbumLayout layout, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(layout);
         if (string.IsNullOrWhiteSpace(layout.AlbumId))
@@ -234,27 +240,27 @@ public sealed class AlbumCatalog
 
         NormalizeLayout(layout);
         layout.UpdatedUtc = DateTime.UtcNow;
-        using var db = _contextFactory.CreateDbContext();
-        if (db.Set<ViewableAlbumLayout>().Any(existing => existing.AlbumId == layout.AlbumId))
+        await using var db = _contextFactory.CreateDbContext();
+        if (await db.Set<ViewableAlbumLayout>().AnyAsync(existing => existing.AlbumId == layout.AlbumId, ct))
             db.Set<ViewableAlbumLayout>().Update(layout);
         else
             db.Set<ViewableAlbumLayout>().Add(layout);
 
-        var album = db.Set<Album>().Find(layout.AlbumId);
+        var album = await db.Set<Album>().FirstOrDefaultAsync(album => album.Id == layout.AlbumId, ct);
         if (album is not null)
             album.UpdatedUtc = DateTime.UtcNow;
-        db.SaveChanges();
+        await db.SaveChangesAsync(ct);
     }
 
-    public bool DeleteLayout(string albumId)
+    public async Task<bool> DeleteLayoutAsync(string albumId, CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        var layout = db.Set<ViewableAlbumLayout>().Find(albumId);
+        await using var db = _contextFactory.CreateDbContext();
+        var layout = await db.Set<ViewableAlbumLayout>().FirstOrDefaultAsync(layout => layout.AlbumId == albumId, ct);
         if (layout is null)
             return false;
 
         db.Remove(layout);
-        return db.SaveChanges() > 0;
+        return await db.SaveChangesAsync(ct) > 0;
     }
 
     private static string NormalizeFolderName(string value)
@@ -262,18 +268,18 @@ public sealed class AlbumCatalog
         return value.Trim().ToUpperInvariant();
     }
 
-    public void UpdateAlbumBackground(string id, BackGroundFill fill)
+    public async Task UpdateAlbumBackgroundAsync(string id, BackGroundFill fill, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(id);
         ArgumentNullException.ThrowIfNull(fill);
-        using var db = _contextFactory.CreateDbContext();
-        var album = db.Set<Album>().Find(id);
+        await using var db = _contextFactory.CreateDbContext();
+        var album = await db.Set<Album>().FirstOrDefaultAsync(album => album.Id == id, ct);
         if (album is null)
             throw new ArgumentException("Album not found.", nameof(id));
         album.BackGroundFill = fill;
         album.UpdatedUtc = DateTime.UtcNow;
 
-        db.SaveChanges();
+        await db.SaveChangesAsync(ct);
     }
 
     public static string FormatShareSlug(string value)

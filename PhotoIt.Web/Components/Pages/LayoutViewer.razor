@@ -259,13 +259,13 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        album = Catalog.Get(Id);
+        album = await Catalog.GetAsync(Id);
         if (album is null)
             return;
 
-        albumLayout = Catalog.GetLayout(Id);
+        albumLayout = await Catalog.GetLayoutAsync(Id);
 
-        photos = Catalog.ListPhotos(Id).ToList();
+        photos = (await Catalog.ListPhotosAsync(Id)).ToList();
         photoLookup = photos.ToDictionary(photo => photo.Id, StringComparer.OrdinalIgnoreCase);
         album.Chapters ??= [];
         foreach (var chapter in album.Chapters)

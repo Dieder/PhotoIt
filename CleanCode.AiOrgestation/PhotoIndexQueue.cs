@@ -70,7 +70,7 @@ public sealed class PhotoIndexBackgroundService : BackgroundService
 
             await foreach (var request in _queue.ReadAllAsync(stoppingToken))
             {
-                var photo = _catalog.GetPhoto(request.AlbumId, request.PhotoId);
+                var photo = await _catalog.GetPhotoAsync(request.AlbumId, request.PhotoId, stoppingToken);
                 if (photo is null)
                 {
                     _queue.Complete(request.PhotoId);

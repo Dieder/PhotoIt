@@ -455,14 +455,14 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        album = Catalog.Get(Id);
+        album = await Catalog.GetAsync(Id);
         if (album is not null)
         {
             album.Chapters ??= [];
             foreach (var chapter in album.Chapters)
                 chapter.PhotoIds ??= [];
         }
-        LoadPhotos();
+        await LoadPhotosAsync();
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         canEdit = CurrentUserHelper.GetUserId(authState.User) == album?.UserId;
@@ -493,7 +493,7 @@ else
                     continue;
 
                 ApplyMetadata(photo, metadata);
-                Catalog.UpdatePhoto(photo);
+                await Catalog.UpdatePhotoAsync(photo);
                 changed = true;
             }
             catch
@@ -503,7 +503,7 @@ else
 
         if (changed)
         {
-            LoadPhotos();
+            await LoadPhotosAsync();
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -515,7 +515,7 @@ else
             while (!pageCts.IsCancellationRequested)
             {
                 await Task.Delay(TimeSpan.FromSeconds(1), pageCts.Token);
-                LoadPhotos();
+                await LoadPhotosAsync();
                 await InvokeAsync(StateHasChanged);
             }
         }
@@ -621,7 +621,7 @@ else
                     photo.ThumbnailBlobName = thumbnailBlobName;
                 }
 
-                Catalog.AddPhoto(photo);
+                await Catalog.AddPhotoAsync(photo);
                 PhotoItTelemetry.RecordPhotoUploaded();
                 Logger.LogInformation("Media uploaded. AlbumId: {AlbumId}, MediaId: {MediaId}", album.Id, photo.Id);
                 uploadActivity?.Dispose();
@@ -633,8 +633,8 @@ else
                 await InvokeAsync(StateHasChanged);
             }
 
-            Catalog.Touch(album.Id);
-            LoadPhotos();
+            await Catalog.TouchAsync(album.Id);
+            await LoadPhotosAsync();
             uploadStatus = "Completed";
         }
         catch (Exception exception)
@@ -663,7 +663,7 @@ else
             if (!string.IsNullOrWhiteSpace(photo.ThumbnailBlobName))
                 await Storage.DeleteAsync(photo.ThumbnailBlobName);
             await Storage.DeleteAsync(photo.BlobName);
-            Catalog.DeletePhoto(photo.Id);
+            await Catalog.DeletePhotoAsync(photo.Id);
             if (album is not null)
             {
                 foreach (var chapter in album.Chapters)
@@ -673,10 +673,10 @@ else
                         chapter.ThumbnailPhotoId = chapter.PhotoIds.FirstOrDefault();
                 }
                 album.Chapters.RemoveAll(chapter => chapter.PhotoIds.Count == 0);
-                Catalog.Update(album);
+                await Catalog.UpdateAsync(album);
             }
-            Catalog.Touch(Id);
-            LoadPhotos();
+            await Catalog.TouchAsync(Id);
+            await LoadPhotosAsync();
         }
         catch (Exception exception)
         {
@@ -696,7 +696,7 @@ else
         try
         {
             var result = await VisionOrchestrator.IndexAlbumPhotosAsync(album.Id, Catalog, Storage);
-            LoadPhotos();
+            await LoadPhotosAsync();
             indexMessage = $"Indexed {result.Indexed}, skipped {result.Skipped}, failed {result.Failed}.";
             if (result.Failed > 0)
                 errorMessage = "Some photos could not be indexed. Check the local ONNX model directory and runtime logs.";
@@ -721,7 +721,7 @@ else
             indexingPhotoIds.Add(photo.Id);
             await InvokeAsync(StateHasChanged);
             await VisionOrchestrator.IndexPhotoAsync(photo, Catalog, Storage);
-            LoadPhotos();
+            await LoadPhotosAsync();
             indexMessage = $"Indexed {photo.OriginalFileName}.";
         }
         catch (Exception exception)
@@ -736,9 +736,9 @@ else
         }
     }
 
-    private void LoadPhotos()
+    private async Task LoadPhotosAsync()
     {
-        photos = album is null ? [] : Catalog.ListPhotos(album.Id);
+        photos = album is null ? [] : await Catalog.ListPhotosAsync(album.Id);
     }
 
     private async Task SetChapterTitleModeAsync(ChangeEventArgs args)
@@ -747,7 +747,7 @@ else
             return;
 
         album.UseChapterTitles = args.Value is bool useTitles && useTitles;
-        Catalog.Update(album);
+        await Catalog.UpdateAsync(album);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -791,22 +791,22 @@ else
         isChapterEditorOpen = true;
     }
 
-    private Task SaveChapterAsync()
+    private async Task SaveChapterAsync()
     {
         if (album is null)
-            return Task.CompletedTask;
+            return;
 
         if (!selectedChapterPhotoIds.Any(photoId =>
                 photos.Any(photo => photo.Id == photoId && !PhotoType.IsVideo(photo))))
         {
             chapterError = "Each chapter needs at least one image to use as its thumbnail.";
-            return Task.CompletedTask;
+            return;
         }
 
         if (string.IsNullOrWhiteSpace(chapterTitle) && chapterStartDate is null)
         {
             chapterError = "Enter a chapter title or start date.";
-            return Task.CompletedTask;
+            return;
         }
 
         if (chapterStartDate is DateTime startDate
@@ -814,12 +814,12 @@ else
             && endDate.Date < startDate.Date)
         {
             chapterError = "The chapter end date cannot be before its start date.";
-            return Task.CompletedTask;
+            return;
         }
         if (chapterEndDate.HasValue && !chapterStartDate.HasValue)
         {
             chapterError = "Set a start date before setting an end date.";
-            return Task.CompletedTask;
+            return;
         }
 
         var chapter = album.Chapters.FirstOrDefault(item => item.Id == editingChapterId)
@@ -840,21 +840,19 @@ else
         if (!album.Chapters.Any(item => item.Id == chapter.Id))
             album.Chapters.Add(chapter);
 
-        Catalog.Update(album);
+        await Catalog.UpdateAsync(album);
         CancelChapterEdit();
-        return Task.CompletedTask;
     }
 
-    private Task DeleteChapterAsync(string chapterId)
+    private async Task DeleteChapterAsync(string chapterId)
     {
         if (album is null)
-            return Task.CompletedTask;
+            return;
 
         album.Chapters.RemoveAll(chapter => chapter.Id == chapterId);
-        Catalog.Update(album);
+        await Catalog.UpdateAsync(album);
         if (editingChapterId == chapterId)
             CancelChapterEdit();
-        return Task.CompletedTask;
     }
 
     private void CancelChapterEdit()

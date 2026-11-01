@@ -22,12 +22,12 @@ public sealed class PhotoTagCatalog
         _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
     }
 
-    public void Upsert(PhotoTagRecord photo)
+    public async Task UpsertAsync(PhotoTagRecord photo, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(photo);
         photo.Id = CreateId(photo.Path);
-        using var db = _contextFactory.CreateDbContext();
-        var existing = db.Set<PhotoTagRecord>().Find(photo.Id);
+        await using var db = _contextFactory.CreateDbContext();
+        var existing = await db.Set<PhotoTagRecord>().FirstOrDefaultAsync(existing => existing.Id == photo.Id, ct);
         if (existing is null)
             db.Set<PhotoTagRecord>().Add(photo);
         else
@@ -35,20 +35,21 @@ public sealed class PhotoTagCatalog
             db.Entry(existing).CurrentValues.SetValues(photo);
         }
 
-        db.SaveChanges();
+        await db.SaveChangesAsync(ct);
     }
 
-    public PhotoTagRecord? FindByPath(string path)
+    public async Task<PhotoTagRecord?> FindByPathAsync(string path, CancellationToken ct = default)
     {
         var id = CreateId(path);
-        using var db = _contextFactory.CreateDbContext();
-        return db.Set<PhotoTagRecord>().AsNoTracking().FirstOrDefault(photo => photo.Id == id);
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<PhotoTagRecord>().AsNoTracking()
+            .FirstOrDefaultAsync(photo => photo.Id == id, ct);
     }
 
-    public IEnumerable<PhotoTagRecord> GetAll()
+    public async Task<IReadOnlyList<PhotoTagRecord>> GetAllAsync(CancellationToken ct = default)
     {
-        using var db = _contextFactory.CreateDbContext();
-        return db.Set<PhotoTagRecord>().AsNoTracking().ToArray();
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<PhotoTagRecord>().AsNoTracking().ToArrayAsync(ct);
     }
 
     private static string CreateId(string path)

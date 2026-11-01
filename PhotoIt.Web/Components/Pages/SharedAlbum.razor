@@ -26,8 +26,8 @@ else
 
     private Album? album;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        album = Catalog.GetShared(Slug, Seed);
+        album = await Catalog.GetSharedAsync(Slug, Seed);
     }
 }

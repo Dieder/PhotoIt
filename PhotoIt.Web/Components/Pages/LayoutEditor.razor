@@ -430,7 +430,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        album = Catalog.Get(Id);
+        album = await Catalog.GetAsync(Id);
        
         if (album is null)
             return;
@@ -443,9 +443,9 @@ else
             return;
         }
 
-        photos = Catalog.ListPhotos(Id);
+        photos = await Catalog.ListPhotosAsync(Id);
         photoLookup = photos.ToDictionary(photo => photo.Id, StringComparer.OrdinalIgnoreCase);
-        albumLayout = Catalog.GetLayout(Id);
+        albumLayout = await Catalog.GetLayoutAsync(Id);
         layoutSaved = albumLayout is not null;
 
         if (albumLayout is null)
@@ -745,10 +745,10 @@ else
         draggedFromPageNumber = null;
     }
 
-    private Task SaveAsync()
+    private async Task SaveAsync()
     {
         if (albumLayout is null || album is null)
-            return Task.CompletedTask;
+            return;
 
         using var activity = PhotoItTelemetry.ActivitySource.StartActivity("album.layout.save");
         activity?.SetTag("album.id", album.Id);
@@ -757,7 +757,7 @@ else
         statusMessage = null;
         try
         {
-            Catalog.SaveLayout(albumLayout);
+            await Catalog.SaveLayoutAsync(albumLayout);
             layoutSaved = true;
             statusMessage = "Layout saved.";
             Logger.LogInformation("Album layout saved. AlbumId: {AlbumId}", album.Id);
@@ -772,7 +772,5 @@ else
         {
             isSaving = false;
         }
-
-        return Task.CompletedTask;
     }
 }
