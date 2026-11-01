@@ -220,7 +220,19 @@
 .magazine-distance-stat {
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: .25rem;
+}
+
+.magazine-stat-icon {
+    width: 1.35rem;
+    height: 1.35rem;
+    margin-bottom: .2rem;
+    fill: none;
+    stroke: var(--accent);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.6;
 }
 
 .magazine-stats strong {
