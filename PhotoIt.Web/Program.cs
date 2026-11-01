@@ -64,12 +64,13 @@ builder.Services.AddSingleton<FileIndexer>(_ => new FileIndexer(
 builder.Services.AddSingleton<PhotoVisionOrchestrator>();
 builder.Services.AddSingleton<PhotoIndexQueue>();
 builder.Services.AddHostedService<PhotoIndexBackgroundService>();
-var googleClientId = Environment.GetEnvironmentVariable("Google:ClientId");
-var googleClientSecret = Environment.GetEnvironmentVariable("Google:ClientSecret");
+var googleClientId = builder.Configuration["Google:ClientId"];
+var googleClientSecret = builder.Configuration["Google:ClientSecret"];
 builder.Services.AddAuthentication()
-    .AddGoogle(googleOptions => {
-        googleOptions.ClientId = "{googleClientId}";
-        googleOptions.ClientSecret = "{googleClientSecret}";
+    .AddGoogle(googleOptions =>
+    {
+        googleOptions.ClientId = googleClientId ?? string.Empty;
+        googleOptions.ClientSecret = googleClientSecret ?? string.Empty;
     });
 
 builder.Services.AddCascadingAuthenticationState();

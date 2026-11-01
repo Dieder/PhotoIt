@@ -1,7 +1,9 @@
 @using PhotoIt.Data
+@using PhotoIt.ServiceDefaults
 @using System.ComponentModel.DataAnnotations
 @using EasyMDE.Blazor
 @inject AlbumCatalog Catalog
+@inject ILogger<AlbumForm> Logger
 
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
@@ -176,6 +178,8 @@
 
     private Task SaveAsync()
     {
+        using var activity = PhotoItTelemetry.ActivitySource.StartActivity("album.save");
+        activity?.SetTag("album.operation", IsNew ? "create" : "update");
         if (string.IsNullOrEmpty(Model.UserId))
         {
             var user = authenticationState.User;
@@ -185,19 +189,37 @@
         errorMessage = null;
         if (Catalog.ImageFolderNameExists(Model.ImageFolderName, IsNew ? null : Model.Id))
         {
+            PhotoItTelemetry.RecordAlbumSave(false);
+            Logger.LogWarning("Album save failed because the image folder name is already in use.");
             errorMessage = "That image folder name is already in use.";
             return Task.CompletedTask;
         }
 
         if (IsNew)
         {
-            Catalog.Create(Model);
+            try
+            {
+                Catalog.Create(Model);
+                PhotoItTelemetry.RecordAlbumCreated();
+                PhotoItTelemetry.RecordAlbumSave(true);
+                Logger.LogInformation("Album created. AlbumId: {AlbumId}", Model.Id);
+            }
+            catch (Exception exception)
+            {
+                PhotoItTelemetry.RecordAlbumSave(false);
+                activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Album creation failed");
+                Logger.LogError(exception, "Album creation failed.");
+                errorMessage = "The album could not be created.";
+                return Task.CompletedTask;
+            }
         }
         else
         {
             var album = Catalog.Get(Model.Id);
             if (album is null)
             {
+                PhotoItTelemetry.RecordAlbumSave(false);
+                Logger.LogWarning("Album save failed because the album was not found. AlbumId: {AlbumId}", Model.Id);
                 errorMessage = "The album could not be found.";
                 return Task.CompletedTask;
             }
@@ -207,8 +229,24 @@
             album.Intro = Model.Intro;
             album.ImageFolderName = Model.ImageFolderName;
 
-            if (!Catalog.Update(album))
+            try
             {
+                if (!Catalog.Update(album))
+                {
+                    PhotoItTelemetry.RecordAlbumSave(false);
+                    Logger.LogWarning("Album update failed. AlbumId: {AlbumId}", Model.Id);
+                    errorMessage = "The album could not be updated.";
+                    return Task.CompletedTask;
+                }
+
+                PhotoItTelemetry.RecordAlbumSave(true);
+                Logger.LogInformation("Album updated. AlbumId: {AlbumId}", Model.Id);
+            }
+            catch (Exception exception)
+            {
+                PhotoItTelemetry.RecordAlbumSave(false);
+                activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Album update failed");
+                Logger.LogError(exception, "Album update failed. AlbumId: {AlbumId}", Model.Id);
                 errorMessage = "The album could not be updated.";
                 return Task.CompletedTask;
             }

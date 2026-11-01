@@ -6,6 +6,7 @@
 @using System.Text.Encodings.Web
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
+@using PhotoIt.ServiceDefaults
 
 @inject SignInManager<ApplicationUser> SignInManager
 @inject UserManager<ApplicationUser> UserManager
@@ -101,8 +102,11 @@
 
     private async Task OnLoginCallbackAsync()
     {
+        using var activity = PhotoItTelemetry.ActivitySource.StartActivity("auth.external_login");
         if (externalLoginInfo is null)
         {
+            PhotoItTelemetry.RecordLoginAttempt("failure");
+            Logger.LogWarning("External login failed because provider information was unavailable.");
             RedirectManager.RedirectToWithStatus("Account/Login", "Error loading external login information.", HttpContext);
             return;
         }
@@ -116,18 +120,22 @@
 
         if (result.Succeeded)
         {
-            Logger.LogInformation(
-                "{Name} logged in with {LoginProvider} provider.",
-                externalLoginInfo.Principal.Identity?.Name,
-                externalLoginInfo.LoginProvider);
+            PhotoItTelemetry.RecordLoginAttempt("success");
+            activity?.SetTag("auth.provider", externalLoginInfo.LoginProvider);
+            Logger.LogInformation("User logged in with external provider {LoginProvider}.", externalLoginInfo.LoginProvider);
             RedirectManager.RedirectTo(ReturnUrl);
             return;
         }
         else if (result.IsLockedOut)
         {
+            PhotoItTelemetry.RecordLoginAttempt("locked_out");
+            Logger.LogWarning("External login account locked out.");
             RedirectManager.RedirectTo("Account/Lockout");
             return;
         }
+
+        PhotoItTelemetry.RecordLoginAttempt("failure");
+        Logger.LogInformation("External login requires account registration or failed sign-in.");
 
         // If the user does not have an account, then ask the user to create an account.
         if (externalLoginInfo.Principal.HasClaim(c => c.Type == ClaimTypes.Email))

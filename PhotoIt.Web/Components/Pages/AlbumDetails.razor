@@ -1,10 +1,12 @@
 @page "/albums/{Id}"
 @rendermode InteractiveServer
 @using PhotoIt.Data
+@using PhotoIt.ServiceDefaults
 @inject AlbumCatalog Catalog
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
+@inject ILogger<AlbumDetails> Logger
 @using PhotoIt.Web.Components
 
 <PageTitle>@(album?.Name ?? "Album")</PageTitle>
@@ -20,6 +22,11 @@
 }
 else
 {
+    @if (!string.IsNullOrWhiteSpace(deleteError))
+    {
+        <div class="alert alert-danger" role="alert">@deleteError</div>
+    }
+
     <div class="album-page-header">
 
        
@@ -237,6 +244,7 @@ else
     private bool canEdit;
     private string? shareUrl;
     private bool shareCopied;
+    private string? deleteError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -245,11 +253,17 @@ else
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         canEdit = CurrentUserHelper.GetUserId(authState.User) == album?.UserId;
-        if (canEdit && album is not null)
+        if (canEdit && album is not null && hasLayout)
         {
+            var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
             Catalog.EnsureShareLink(album);
-            if (hasLayout)
-                shareUrl = $"{Navigation.BaseUri.TrimEnd('/')}/sharedalbum/{album.ShareSlug}/{album.ShareSeed}";
+            if (shareLinkCreated)
+            {
+                PhotoItTelemetry.RecordShareCreated();
+                Logger.LogInformation("Album share link created. AlbumId: {AlbumId}", album.Id);
+            }
+
+            shareUrl = $"{Navigation.BaseUri.TrimEnd('/')}/sharedalbum/{album.ShareSlug}/{album.ShareSeed}";
         }
     }
 
@@ -264,8 +278,29 @@ else
 
     private Task DeleteAsync()
     {
-        Catalog.Delete(Id);
-        Navigation.NavigateTo("albums");
+        using var activity = PhotoItTelemetry.ActivitySource.StartActivity("album.delete");
+        deleteError = null;
+        try
+        {
+            if (Catalog.Delete(Id))
+            {
+                PhotoItTelemetry.RecordAlbumDeleted();
+                Logger.LogInformation("Album deleted. AlbumId: {AlbumId}", Id);
+                Navigation.NavigateTo("albums");
+            }
+            else
+            {
+                Logger.LogWarning("Album deletion failed because the album was not found. AlbumId: {AlbumId}", Id);
+                deleteError = "The album could not be deleted because it was not found.";
+            }
+        }
+        catch (Exception exception)
+        {
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Album deletion failed");
+            Logger.LogError(exception, "Album deletion failed. AlbumId: {AlbumId}", Id);
+            deleteError = "The album could not be deleted. Please try again.";
+        }
+
         return Task.CompletedTask;
     }
 }

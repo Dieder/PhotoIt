@@ -2,9 +2,9 @@
 
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
+@using PhotoIt.ServiceDefaults
 
 @inject SignInManager<ApplicationUser> SignInManager
-@inject UserManager<ApplicationUser> UserManager
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<LoginWith2fa> Logger
 
@@ -67,23 +67,26 @@
 
     private async Task OnValidSubmitAsync()
     {
+        using var activity = PhotoItTelemetry.ActivitySource.StartActivity("auth.two_factor_login");
         var authenticatorCode = Input.TwoFactorCode!.Replace(" ", string.Empty).Replace("-", string.Empty);
         var result = await SignInManager.TwoFactorAuthenticatorSignInAsync(authenticatorCode, RememberMe, Input.RememberMachine);
-        var userId = await UserManager.GetUserIdAsync(user);
 
         if (result.Succeeded)
         {
-            Logger.LogInformation("User with ID '{UserId}' logged in with 2fa.", userId);
+            PhotoItTelemetry.RecordLoginAttempt("success");
+            Logger.LogInformation("User logged in with two-factor authentication.");
             RedirectManager.RedirectTo(ReturnUrl);
         }
         else if (result.IsLockedOut)
         {
-            Logger.LogWarning("User with ID '{UserId}' account locked out.", userId);
+            PhotoItTelemetry.RecordLoginAttempt("locked_out");
+            Logger.LogWarning("User account locked out during two-factor authentication.");
             RedirectManager.RedirectTo("Account/Lockout");
         }
         else
         {
-            Logger.LogWarning("Invalid authenticator code entered for user with ID '{UserId}'.", userId);
+            PhotoItTelemetry.RecordLoginAttempt("failure");
+            Logger.LogWarning("Invalid authenticator code entered.");
             message = "Error: Invalid authenticator code.";
         }
     }

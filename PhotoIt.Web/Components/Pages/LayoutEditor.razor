@@ -1,11 +1,13 @@
 @page "/albums/{Id}/layout/edit"
 @rendermode InteractiveServer
 @using PhotoIt.Data
+@using PhotoIt.ServiceDefaults
 @using PhotoIt.Web.Components.Layout
 @inject AlbumCatalog Catalog
 @inject NavigationManager Navigation
 @inject HttpClient Http
 @inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<LayoutEditor> Logger
 @using PhotoIt.Web.Components
 @using Microsoft.AspNetCore.Authorization;
 @attribute [Authorize]
@@ -748,6 +750,8 @@ else
         if (albumLayout is null || album is null)
             return Task.CompletedTask;
 
+        using var activity = PhotoItTelemetry.ActivitySource.StartActivity("album.layout.save");
+        activity?.SetTag("album.id", album.Id);
         isSaving = true;
         errorMessage = null;
         statusMessage = null;
@@ -756,9 +760,12 @@ else
             Catalog.SaveLayout(albumLayout);
             layoutSaved = true;
             statusMessage = "Layout saved.";
+            Logger.LogInformation("Album layout saved. AlbumId: {AlbumId}", album.Id);
         }
         catch (Exception exception)
         {
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Album layout save failed");
+            Logger.LogError(exception, "Album layout save failed. AlbumId: {AlbumId}", album.Id);
             errorMessage = $"Save failed: {exception.Message}";
         }
         finally

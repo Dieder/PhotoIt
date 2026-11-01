@@ -2,9 +2,9 @@
 
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
+@using PhotoIt.ServiceDefaults
 
 @inject SignInManager<ApplicationUser> SignInManager
-@inject UserManager<ApplicationUser> UserManager
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<LoginWithRecoveryCode> Logger
 
@@ -53,25 +53,27 @@
 
     private async Task OnValidSubmitAsync()
     {
+        using var activity = PhotoItTelemetry.ActivitySource.StartActivity("auth.recovery_code_login");
         var recoveryCode = Input.RecoveryCode.Replace(" ", string.Empty);
 
         var result = await SignInManager.TwoFactorRecoveryCodeSignInAsync(recoveryCode);
 
-        var userId = await UserManager.GetUserIdAsync(user);
-
         if (result.Succeeded)
         {
-            Logger.LogInformation("User with ID '{UserId}' logged in with a recovery code.", userId);
+            PhotoItTelemetry.RecordLoginAttempt("success");
+            Logger.LogInformation("User logged in with a recovery code.");
             RedirectManager.RedirectTo(ReturnUrl);
         }
         else if (result.IsLockedOut)
         {
+            PhotoItTelemetry.RecordLoginAttempt("locked_out");
             Logger.LogWarning("User account locked out.");
             RedirectManager.RedirectTo("Account/Lockout");
         }
         else
         {
-            Logger.LogWarning("Invalid recovery code entered for user with ID '{UserId}' ", userId);
+            PhotoItTelemetry.RecordLoginAttempt("failure");
+            Logger.LogWarning("Invalid recovery code entered.");
             message = "Error: Invalid recovery code entered.";
         }
     }
