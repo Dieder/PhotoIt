@@ -13,16 +13,32 @@
     markers: [],
     polylines: [],
     routeLayers: [],
+    dotNetReference: null,
+    destinationSelectionEnabled: false,
 
-    initialize: function () {
+    initialize: function (dotNetReference) {
 
         if (this.map) {
             this.map.remove();
         }
 
+        this.dotNetReference = dotNetReference;
+        this.destinationSelectionEnabled = false;
         this.map = L.map('travelMap');
 
-        this.map.setView([-30, 24], 4);
+        this.map.setView([20, 0], 2);
+        this.map._hasFittedRoute = false;
+
+        var self = this;
+        this.map.on("click", function (event) {
+            if (!self.destinationSelectionEnabled || !self.dotNetReference)
+                return;
+
+            self.dotNetReference.invokeMethodAsync(
+                "OnMapPointSelected",
+                event.latlng.lat,
+                event.latlng.lng);
+        });
 
         L.tileLayer(
             'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -34,6 +50,18 @@
         this.markers = [];
         this.polylines = [];
         this.routeLayers = [];
+    },
+
+    setDestinationSelection: function (enabled) {
+        this.destinationSelectionEnabled = Boolean(enabled);
+        var container = this.map?.getContainer();
+        if (container)
+            container.classList.toggle("selecting-route-destination", this.destinationSelectionEnabled);
+    },
+
+    focusPoint: function (latitude, longitude) {
+        if (this.map && Number.isFinite(latitude) && Number.isFinite(longitude))
+            this.map.panTo([latitude, longitude]);
     },
 
     refresh: function (tripGraph) {
@@ -193,8 +221,9 @@
             self.markers.push(middleIcon);
         });
 
-        if (bounds.isValid()) {
+        if (bounds.isValid() && !this.map._hasFittedRoute) {
             fitMapToBounds(this.map, bounds);
+            this.map._hasFittedRoute = true;
         }
     },
 
