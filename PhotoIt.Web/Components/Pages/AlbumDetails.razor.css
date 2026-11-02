@@ -84,6 +84,61 @@
     transition: background-color 0.3s ease;
 }
 
+.album-photo-search-link {
+    position: relative;
+    width: min(100%, 24rem);
+    min-height: 12rem;
+    margin: 0 0 1.5rem;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    border-radius: .8rem;
+    color: #fff;
+    background: linear-gradient(135deg, #637b85, #26343b 70%, #b87d55);
+    text-decoration: none;
+    box-shadow: 0 .4rem 1.2rem rgb(0 0 0 / 15%);
+}
+
+.album-photo-search-link > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform .2s ease;
+}
+
+.album-photo-search-link::after {
+    position: absolute;
+    inset: 0;
+    content: "";
+    background: linear-gradient(180deg, rgb(0 0 0 / 4%) 25%, rgb(0 0 0 / 55%) 100%);
+}
+
+.album-photo-search-link:hover > img {
+    transform: scale(1.04);
+}
+
+.album-photo-search-no-cover {
+    color: rgb(255 255 255 / 82%);
+}
+
+.album-photo-search-label {
+    position: absolute;
+    z-index: 1;
+    right: .85rem;
+    bottom: .85rem;
+    padding: .55rem .85rem;
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    border: 1px solid rgb(255 255 255 / 45%);
+    border-radius: 999px;
+    color: #fff;
+    background: rgb(23 33 43 / 78%);
+    font-weight: 600;
+}
+
 .theme-img {
     max-width: 2rem;
     max-height: 2rem;

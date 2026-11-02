@@ -29,6 +29,17 @@ else
                 <span class="magazine-brand">PHOTOBOOK</span>
             }
             <div class="magazine-toolbar-actions">
+                <button type="button"
+                        class="magazine-search-toggle"
+                        aria-label="Search album photos"
+                        aria-expanded="@isPhotoSearchOpen"
+                        @onclick="TogglePhotoSearch">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="10.8" cy="10.8" r="6.8"></circle>
+                        <path d="m16 16 5 5"></path>
+                    </svg>
+                    <span>Search</span>
+                </button>
                 @if (canEdit && !SharedLink)
                 {
                     <a class="magazine-edit-link" href="/albums/@album.Id/layout/edit">Edit layout</a>
@@ -74,7 +85,73 @@ else
                 </aside>
             }
             <div class="magazine-content">
-        @if (activeChapter is not null)
+        @if (isPhotoSearchOpen)
+        {
+            var searchResults = GetPhotoSearchResults();
+            <section class="magazine-photo-search" role="search" aria-label="Search album photos">
+                <div class="magazine-photo-search-heading">
+                    <div>
+                        <p class="magazine-eyebrow">Search the album</p>
+                        <h1>All photos</h1>
+                    </div>
+                    <button type="button" class="magazine-text-button" @onclick="ClosePhotoSearch">Back to album</button>
+                </div>
+                <label class="magazine-search-field">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="10.8" cy="10.8" r="6.8"></circle>
+                        <path d="m16 16 5 5"></path>
+                    </svg>
+                    <input type="search"
+                           aria-label="Search filenames, descriptions, tags, and photo details"
+                           placeholder="Search filenames, descriptions, tags..."
+                           @bind="photoSearchQuery"
+                           @bind:event="oninput" />
+                </label>
+                @if (string.IsNullOrWhiteSpace(photoSearchQuery))
+                {
+                    <p class="magazine-search-hint">Search across all @photos.Count photo@(photos.Count == 1 ? "" : "s") and videos by filename, description, tags, camera, or date.</p>
+                }
+                else if (searchResults.Count == 0)
+                {
+                    <p class="magazine-search-hint">No photos match “@photoSearchQuery”.</p>
+                }
+                else
+                {
+                    <p class="magazine-search-hint">@searchResults.Count result@(searchResults.Count == 1 ? "" : "s")</p>
+                    <div class="magazine-search-results">
+                        @foreach (var photo in searchResults)
+                        {
+                            <button type="button" class="magazine-search-result" @onclick="() => OpenSearchResult(photo.Id)">
+                                @if (PhotoType.IsVideo(photo))
+                                {
+                                    <span class="magazine-search-thumbnail magazine-search-video" aria-hidden="true">▶</span>
+                                }
+                                else
+                                {
+                                    <img class="magazine-search-thumbnail"
+                                         src="@GetPhotoThumbnailUrl(photo.Id)"
+                                         alt=""
+                                         loading="lazy" />
+                                }
+                                <span class="magazine-search-result-copy">
+                                    <strong>@photo.OriginalFileName</strong>
+                                    <span>@AlbumCatalog.GetDisplayDate(photo).ToString("d MMM yyyy")</span>
+                                    @if (photo.Tags.Count > 0)
+                                    {
+                                        <span>@string.Join(" · ", photo.Tags)</span>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(photo.Description))
+                                    {
+                                        <span>@photo.Description</span>
+                                    }
+                                </span>
+                            </button>
+                        }
+                    </div>
+                }
+            </section>
+        }
+        else if (activeChapter is not null)
         {
             <section class="chapter-view">
                 <button type="button" class="magazine-text-button" @onclick="BackToCover">← Back to cover</button>
@@ -284,6 +361,42 @@ else
             </div>
         }
 
+        @if (searchPreviewPhoto is not null)
+        {
+            <div class="magazine-photo-preview-backdrop" role="presentation" @onclick="CloseSearchPreview">
+                <section class="magazine-photo-preview" role="dialog" aria-modal="true" aria-label="@searchPreviewPhoto.OriginalFileName" @onclick:stopPropagation="true">
+                    <div class="magazine-photo-preview-header">
+                        <strong>@searchPreviewPhoto.OriginalFileName</strong>
+                        <button type="button" class="magazine-map-close" aria-label="Close photo preview" @onclick="CloseSearchPreview">×</button>
+                    </div>
+                    @if (PhotoType.IsVideo(searchPreviewPhoto))
+                    {
+                        <video src="@GetPhotoUrl(searchPreviewPhoto.Id)" controls autoplay playsinline preload="metadata"></video>
+                    }
+                    else
+                    {
+                        <img src="@GetPhotoUrl(searchPreviewPhoto.Id)" alt="@searchPreviewPhoto.OriginalFileName" />
+                    }
+                    <div class="magazine-photo-preview-details">
+                        <span>@AlbumCatalog.GetDisplayDate(searchPreviewPhoto).ToString("d MMM yyyy")</span>
+                        @if (!string.IsNullOrWhiteSpace(searchPreviewPhoto.Description))
+                        {
+                            <p>@searchPreviewPhoto.Description</p>
+                        }
+                        @if (searchPreviewPhoto.Tags.Count > 0)
+                        {
+                            <div class="magazine-photo-preview-tags">
+                                @foreach (var tag in searchPreviewPhoto.Tags)
+                                {
+                                    <span>@tag</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </section>
+            </div>
+        }
+
         @if (currentViewIndex > 0 && currentViewIndex < totalPages && activeChapter is null)
         {
             <nav class="magazine-page-nav" aria-label="Album pages">
@@ -314,9 +427,13 @@ else
     private LayoutPage? currentContentPage;
     private bool canEdit;
     private string? activeChapterId;
+    private bool isPhotoSearchOpen;
+    private string photoSearchQuery = string.Empty;
+    private string? searchPreviewPhotoId;
     private bool routeMapOpen;
     private bool routeMapInitialized;
     private DisplayChapter? activeChapter => chapters.FirstOrDefault(chapter => chapter.Id == activeChapterId);
+    private AlbumPhoto? searchPreviewPhoto => photos.FirstOrDefault(photo => photo.Id == searchPreviewPhotoId);
     private bool HasRoute => album?.TripGraph?.Legs.Any(leg =>
         leg.From.HasGeoPoint() && leg.To.HasGeoPoint()) == true;
 
@@ -447,6 +564,60 @@ else
     private string GetDistanceNumber() => GetTotalDistanceKm().ToString("N0");
     private string GetDistanceLabel() => $"{GetDistanceNumber()} km";
 
+    private List<AlbumPhoto> GetPhotoSearchResults()
+    {
+        var terms = photoSearchQuery
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (terms.Length == 0)
+            return [];
+
+        return photos
+            .Where(photo =>
+            {
+                var searchableText = string.Join(' ', new[]
+                {
+                    photo.OriginalFileName,
+                    photo.Description,
+                    photo.CameraMake,
+                    photo.CameraModel,
+                    photo.LensModel,
+                    photo.Dimensions,
+                    photo.Latitude?.ToString("F6"),
+                    photo.Longitude?.ToString("F6"),
+                    AlbumCatalog.GetDisplayDate(photo).ToString("d MMM yyyy")
+                }.Concat(photo.Tags))
+                .ToUpperInvariant();
+
+                return terms.All(term => searchableText.Contains(term, StringComparison.OrdinalIgnoreCase));
+            })
+            .OrderByDescending(photo => photo.DateTakenUtc ?? photo.UploadedUtc)
+            .ToList();
+    }
+
+    private void TogglePhotoSearch()
+    {
+        isPhotoSearchOpen = !isPhotoSearchOpen;
+        routeMapOpen = false;
+        searchPreviewPhotoId = null;
+        if (isPhotoSearchOpen)
+            photoSearchQuery = string.Empty;
+    }
+
+    private void ClosePhotoSearch()
+    {
+        isPhotoSearchOpen = false;
+        photoSearchQuery = string.Empty;
+        searchPreviewPhotoId = null;
+    }
+
+    private void OpenSearchResult(string photoId)
+    {
+        routeMapOpen = false;
+        searchPreviewPhotoId = photoId;
+    }
+
+    private void CloseSearchPreview() => searchPreviewPhotoId = null;
+
     private string GetRouteSummary()
     {
         if (!string.IsNullOrWhiteSpace(album?.TripGraph?.RouteDescription))
@@ -560,7 +731,12 @@ else
     }
 
     private void OpenIntroduction() => currentViewIndex = 1;
-    private void OpenRouteMap() => routeMapOpen = HasRoute;
+    private void OpenRouteMap()
+    {
+        isPhotoSearchOpen = false;
+        searchPreviewPhotoId = null;
+        routeMapOpen = HasRoute;
+    }
     private void CloseRouteMap() => routeMapOpen = false;
 
     private void StartAlbum()
@@ -576,7 +752,7 @@ else
 
     private void HandleKeyDown(KeyboardEventArgs args)
     {
-        if (routeMapOpen || activeChapter is not null)
+        if (routeMapOpen || activeChapter is not null || isPhotoSearchOpen || searchPreviewPhoto is not null)
             return;
 
         if (args.Key is "ArrowLeft" or "ArrowUp")

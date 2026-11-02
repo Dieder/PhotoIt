@@ -63,7 +63,7 @@ else
         @if (canEdit)
         {
             <a class="toolbar-button"
-               href="/albums/@album.Id/photos">
+               href="/albums/@album.Id/photos/manage">
 
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path d="M4 5h16v14H4z" stroke-width="2" />
@@ -184,17 +184,22 @@ else
                 <p class="album-description text-secondary mb-4">
                     @album.FullDescription
                 </p>
-                <p>
-                     @if (!string.IsNullOrWhiteSpace(coverPhotoId))
-                            {
-                                <img class="card-img-top" src="albums/@album.Id/photos/@coverPhotoId/content" alt="Cover for @album.Name" style="max-width: 240px; max-height:240px; object-fit: cover;" />
-                            }
-                            else
-                            {
-                                <div class="d-flex align-items-center justify-content-center bg-light text-muted" style="height: 220px;">No cover photo</div>
-                            }
-                </p>
             }
+
+            <a class="album-photo-search-link" href="/albums/@album.Id/photos" aria-label="Search photos in @album.Name">
+                @if (!string.IsNullOrWhiteSpace(coverPhotoId))
+                {
+                    <img src="/albums/@album.Id/photos/@coverPhotoId/thumbnail" alt="" />
+                }
+                else
+                {
+                    <span class="album-photo-search-no-cover">No cover photo</span>
+                }
+                <span class="album-photo-search-label">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    Search photos
+                </span>
+            </a>
 
             <hr class="album-divider" />
 
