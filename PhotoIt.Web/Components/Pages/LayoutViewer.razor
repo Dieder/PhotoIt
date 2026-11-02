@@ -163,21 +163,49 @@ else
                     <h1>@activeChapter.Title</h1>
                     <p>@activeChapter.Days day@(activeChapter.Days == 1 ? "" : "s") · @activeChapter.Photos.Count photo@(activeChapter.Photos.Count == 1 ? "" : "s")</p>
                 </div>
-                <div class="chapter-photo-grid">
-                    @foreach (var photo in activeChapter.Photos)
+                @if (activeChapter.Mode == AlbumChapterMode.ChapterWithPages)
+                {
+                    @if (activeChapter.Pages.Count == 0)
                     {
-                        <figure class="chapter-photo">
-                            @if (PhotoType.IsVideo(photo))
-                            {
-                                <video src="@GetPhotoUrl(photo.Id)" controls playsinline preload="metadata"></video>
-                            }
-                            else
-                            {
-                                <img src="@GetPhotoUrl(photo.Id)" alt="Photo from @activeChapter.Title" loading="lazy" />
-                            }
-                        </figure>
+                        <p class="magazine-empty-chapter">This chapter does not have any pages yet.</p>
                     }
-                </div>
+                    else
+                    {
+                        <div class="chapter-pages">
+                            @foreach (var chapterPage in activeChapter.Pages)
+                            {
+                                <section class="layout-viewer-page">
+                                    <LayoutPageRenderer AlbumId="@album.Id"
+                                                        TemplateId="@chapterPage.TemplateId"
+                                                        PageNumber="@chapterPage.Number"
+                                                        Photos="@chapterPage.Photos"
+                                                        Appearance="@chapterPage.Appearance"
+                                                        PhotoLookup="@photoLookup"
+                                                        Editable="false"
+                                                        PresentationMode="@SharedLink" />
+                                </section>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="chapter-photo-grid">
+                        @foreach (var photo in activeChapter.Photos)
+                        {
+                            <figure class="chapter-photo">
+                                @if (PhotoType.IsVideo(photo))
+                                {
+                                    <video src="@GetPhotoUrl(photo.Id)" controls playsinline preload="metadata"></video>
+                                }
+                                else
+                                {
+                                    <img src="@GetPhotoUrl(photo.Id)" alt="Photo from @activeChapter.Title" loading="lazy" />
+                                }
+                            </figure>
+                        }
+                    </div>
+                }
             </section>
         }
         else if (currentViewIndex == 0)
@@ -451,7 +479,7 @@ else
         foreach (var chapter in album.Chapters)
             chapter.PhotoIds ??= [];
         BuildChapters();
-        totalPages = 2 + (albumLayout?.Pages.Count ?? 0);
+        totalPages = 2 + (albumLayout?.Pages.Count(page => string.IsNullOrWhiteSpace(page.ChapterId)) ?? 0);
         UpdateCurrentContentPage();
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -644,9 +672,9 @@ else
         var manualIndex = 0;
         foreach (var chapter in album.Chapters.OrderBy(item => item.StartDate).ThenBy(item => item.Title))
         {
-            var chapterPhotos = photos
-                .Where(photo => chapter.PhotoIds.Contains(photo.Id, StringComparer.OrdinalIgnoreCase))
-                .OrderBy(photo => AlbumCatalog.GetDisplayDate(photo))
+            var chapterPhotos = chapter.PhotoIds
+                .Where(photoLookup.ContainsKey)
+                .Select(photoId => photoLookup[photoId])
                 .ToList();
             if (chapterPhotos.Count == 0)
                 continue;
@@ -667,7 +695,12 @@ else
                 string.Equals(title.Trim(), dateLabel, StringComparison.OrdinalIgnoreCase) ? null : dateLabel,
                 thumbnailId,
                 chapterPhotos,
-                GetChapterDayCount(chapter, chapterPhotos)));
+                GetChapterDayCount(chapter, chapterPhotos),
+                chapter.Mode,
+                albumLayout?.Pages
+                    .Where(page => page.ChapterId == chapter.Id)
+                    .OrderBy(page => page.Number)
+                    .ToList() ?? []));
         }
 
         if (album.Chapters.Count > 0)
@@ -689,7 +722,9 @@ else
                 string.Equals(title.Trim(), dateLabel, StringComparison.OrdinalIgnoreCase) ? null : dateLabel,
                 groupPhotos.FirstOrDefault(photo => !PhotoType.IsVideo(photo))?.Id,
                 groupPhotos,
-                1));
+                1,
+                AlbumChapterMode.ChapterOnly,
+                []));
         }
     }
 
@@ -741,7 +776,7 @@ else
 
     private void StartAlbum()
     {
-        if (albumLayout?.Pages.Count > 0)
+        if (albumLayout?.Pages.Any(page => string.IsNullOrWhiteSpace(page.ChapterId)) == true)
             currentViewIndex = 2;
         else if (chapters.Count > 0)
             activeChapterId = chapters[0].Id;
@@ -770,6 +805,7 @@ else
         }
 
         currentContentPage = albumLayout.Pages
+            .Where(page => string.IsNullOrWhiteSpace(page.ChapterId))
             .OrderBy(page => page.Number)
             .ElementAtOrDefault(currentViewIndex - 2);
     }
@@ -809,5 +845,7 @@ else
         string? DateLabel,
         string? ThumbnailPhotoId,
         List<AlbumPhoto> Photos,
-        int Days);
+        int Days,
+        AlbumChapterMode Mode,
+        List<LayoutPage> Pages);
 }

@@ -90,6 +90,14 @@
                             <label class="form-check-label" for="show-route">Show route and distance on the album cover</label>
                         </div>
                     </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label" for="default-chapter-mode">Default mode for new chapters</label>
+                        <InputSelect id="default-chapter-mode" class="form-select album-input" @bind-Value="Model.DefaultChapterMode">
+                            <option value="@AlbumChapterMode.ChapterOnly">Chapter only</option>
+                            <option value="@AlbumChapterMode.ChapterWithPages">Chapter with pages</option>
+                        </InputSelect>
+                        <div class="form-text">Changing this default does not change existing chapters or their pages.</div>
+                    </div>
                 </div>
             </section>
 
@@ -258,6 +266,7 @@
             album.TravelEndDate = Model.TravelEndDate;
             album.ShowRouteOnCover = Model.ShowRouteOnCover;
             album.UseChapterTitles = Model.UseChapterTitles;
+            album.DefaultChapterMode = Model.DefaultChapterMode;
             album.Chapters = Model.Chapters;
 
             try

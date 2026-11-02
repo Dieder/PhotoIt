@@ -157,6 +157,12 @@ else
                             <div class="border rounded bg-white px-3 py-2 d-flex align-items-center gap-2">
                                 <span>@(string.IsNullOrWhiteSpace(chapter.Title) ? FormatChapterDate(chapter.StartDate) : chapter.Title)</span>
                                 <small class="text-muted">@GetChapterDayCount(chapter) day@(GetChapterDayCount(chapter) == 1 ? "" : "s")</small>
+                                <small class="badge text-bg-light">@GetChapterModeLabel(chapter.Mode)</small>
+                                @if (chapter.Mode == AlbumChapterMode.ChapterWithPages)
+                                {
+                                    <a class="btn btn-sm btn-outline-primary"
+                                       href="/albums/@album.Id/layout/edit?chapterId=@chapter.Id">Manage pages</a>
+                                }
                                 <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => EditChapter(chapter)">Edit</button>
                                 <button type="button" class="btn btn-sm btn-outline-danger" aria-label="Delete chapter" @onclick="() => DeleteChapterAsync(chapter.Id)">×</button>
                             </div>
@@ -205,6 +211,14 @@ else
                             <InputDate id="chapter-end-date" class="form-control" @bind-Value="chapterEndDate" />
                             <div class="form-text">When blank, photos are filtered to the start date, or through the day before the next chapter starts.</div>
                         </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="chapter-mode">Chapter mode</label>
+                            <InputSelect id="chapter-mode" class="form-select" @bind-Value="selectedChapterMode">
+                                <option value="@AlbumChapterMode.ChapterOnly">Chapter only</option>
+                                <option value="@AlbumChapterMode.ChapterWithPages">Chapter with pages</option>
+                            </InputSelect>
+                            <div class="form-text">Chapter with pages uses explicitly designed pages; otherwise all selected photos are shown directly.</div>
+                        </div>
                     </div>
 
                     <div class="mt-3">
@@ -218,7 +232,7 @@ else
                                     <label class="chapter-photo-select">
                                         <input type="checkbox"
                                                checked="@isSelected"
-                                               @onchange="args => SetChapterPhotoSelected(photo.Id, args)" />
+                                               @onchange="args => SetChapterPhotoSelectedAsync(photo.Id, args)" />
                                         <span>Select</span>
                                     </label>
                                     @if (isVideo)
@@ -278,6 +292,7 @@ else
     public string Id { get; set; } = string.Empty;
 
     private Album? album;
+    private ViewableAlbumLayout? albumLayout;
     private IReadOnlyList<AlbumPhoto> photos = [];
     private string activeTab = "upload";
     private bool isUploading;
@@ -290,6 +305,7 @@ else
     private string chapterTitle = string.Empty;
     private DateTime? chapterStartDate;
     private DateTime? chapterEndDate;
+    private AlbumChapterMode selectedChapterMode = AlbumChapterMode.ChapterOnly;
     private string? chapterThumbnailPhotoId;
     private string? editingChapterId;
     private bool isChapterEditorOpen;
@@ -351,6 +367,7 @@ else
             foreach (var chapter in album.Chapters)
                 chapter.PhotoIds ??= [];
         }
+        albumLayout = await Catalog.GetLayoutAsync(Id);
         await LoadPhotosAsync();
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -611,7 +628,7 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
-    private void SetChapterPhotoSelected(string photoId, ChangeEventArgs args)
+    private Task SetChapterPhotoSelectedAsync(string photoId, ChangeEventArgs args)
     {
         if (args.Value is bool selected && selected)
         {
@@ -620,10 +637,19 @@ else
         }
         else
         {
+            if (editingChapterId is not null && IsPhotoAssignedToChapterPage(editingChapterId, photoId))
+            {
+                chapterError = "This photo is assigned to a chapter page. Remove it from the page before removing it from the chapter.";
+                return Task.CompletedTask;
+            }
+
             selectedChapterPhotoIds.Remove(photoId);
             if (string.Equals(chapterThumbnailPhotoId, photoId, StringComparison.OrdinalIgnoreCase))
                 chapterThumbnailPhotoId = selectedChapterPhotoIds.FirstOrDefault();
         }
+
+        chapterError = null;
+        return Task.CompletedTask;
     }
 
     private void SetChapterThumbnail(string photoId)
@@ -638,6 +664,7 @@ else
         chapterTitle = chapter.Title;
         chapterStartDate = chapter.StartDate;
         chapterEndDate = chapter.EndDate;
+        selectedChapterMode = chapter.Mode;
         selectedChapterPhotoIds.Clear();
         foreach (var photoId in chapter.PhotoIds)
             selectedChapterPhotoIds.Add(photoId);
@@ -648,6 +675,7 @@ else
     private void StartNewChapter()
     {
         CancelChapterEdit();
+        selectedChapterMode = album?.DefaultChapterMode ?? AlbumChapterMode.ChapterOnly;
         isChapterEditorOpen = true;
     }
 
@@ -682,11 +710,30 @@ else
             return;
         }
 
+        if (album.Chapters
+            .Where(item => item.Id != editingChapterId)
+            .Any(existing => selectedChapterPhotoIds.Any(photoId =>
+                existing.PhotoIds.Contains(photoId, StringComparer.OrdinalIgnoreCase)
+                && IsPhotoAssignedToChapterPage(existing.Id, photoId))))
+        {
+            chapterError = "A photo used on another chapter's page cannot be moved to this chapter.";
+            return;
+        }
+
+        if (editingChapterId is not null
+            && selectedChapterMode == AlbumChapterMode.ChapterOnly
+            && albumLayout?.Pages.Any(page => page.ChapterId == editingChapterId) == true)
+        {
+            chapterError = "Delete or reassign this chapter's pages before switching it to Chapter only.";
+            return;
+        }
+
         var chapter = album.Chapters.FirstOrDefault(item => item.Id == editingChapterId)
             ?? new AlbumChapter();
         chapter.Title = chapterTitle.Trim();
         chapter.StartDate = chapterStartDate;
         chapter.EndDate = chapterEndDate;
+        chapter.Mode = selectedChapterMode;
         chapter.PhotoIds = selectedChapterPhotoIds.ToList();
         chapter.ThumbnailPhotoId = selectedChapterPhotoIds.Contains(chapterThumbnailPhotoId ?? string.Empty)
             && photos.Any(photo => photo.Id == chapterThumbnailPhotoId && !PhotoType.IsVideo(photo))
@@ -700,7 +747,22 @@ else
         if (!album.Chapters.Any(item => item.Id == chapter.Id))
             album.Chapters.Add(chapter);
 
-        await Catalog.UpdateAsync(album);
+        try
+        {
+            if (!await Catalog.UpdateAsync(album))
+            {
+                chapterError = "The album could not be updated.";
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Chapter save failed. AlbumId: {AlbumId}", album.Id);
+            chapterError = $"Chapter could not be saved: {exception.Message}";
+            album = await Catalog.GetAsync(Id);
+            return;
+        }
+
         CancelChapterEdit();
     }
 
@@ -709,8 +771,29 @@ else
         if (album is null)
             return;
 
+        if (albumLayout?.Pages.Any(page => page.ChapterId == chapterId) == true)
+        {
+            chapterError = "This chapter still has pages. Remove its pages before deleting the chapter.";
+            return;
+        }
+
         album.Chapters.RemoveAll(chapter => chapter.Id == chapterId);
-        await Catalog.UpdateAsync(album);
+        try
+        {
+            if (!await Catalog.UpdateAsync(album))
+            {
+                chapterError = "The album could not be updated.";
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Chapter delete failed. AlbumId: {AlbumId}, ChapterId: {ChapterId}", album.Id, chapterId);
+            chapterError = $"Chapter could not be deleted: {exception.Message}";
+            album = await Catalog.GetAsync(Id);
+            return;
+        }
+
         if (editingChapterId == chapterId)
             CancelChapterEdit();
     }
@@ -722,6 +805,7 @@ else
         chapterTitle = string.Empty;
         chapterStartDate = null;
         chapterEndDate = null;
+        selectedChapterMode = album?.DefaultChapterMode ?? AlbumChapterMode.ChapterOnly;
         chapterThumbnailPhotoId = null;
         selectedChapterPhotoIds.Clear();
         chapterError = null;
@@ -729,6 +813,14 @@ else
 
     private static string FormatChapterDate(DateTime? date) =>
         date?.ToString("d MMM yyyy") ?? "Untitled chapter";
+
+    private static string GetChapterModeLabel(AlbumChapterMode mode) =>
+        mode == AlbumChapterMode.ChapterWithPages ? "Chapter with pages" : "Chapter only";
+
+    private bool IsPhotoAssignedToChapterPage(string chapterId, string photoId) =>
+        albumLayout?.Pages.Any(page =>
+            page.ChapterId == chapterId
+            && page.Photos.Any(slot => string.Equals(slot.PhotoId, photoId, StringComparison.OrdinalIgnoreCase))) == true;
 
     private int GetChapterDayCount(AlbumChapter chapter)
     {

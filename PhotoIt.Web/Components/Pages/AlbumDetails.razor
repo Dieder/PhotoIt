@@ -74,18 +74,21 @@ else
                 <span>Manage Photos</span>
             </a>
 
-            <a class="toolbar-button"
-               href="/albums/@album.Id/layout/edit">
+            @if (canManageLayout)
+            {
+                <a class="toolbar-button"
+                   href="/albums/@album.Id/layout/edit">
 
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"
-                          stroke-width="2" />
-                </svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"
+                              stroke-width="2" />
+                    </svg>
 
-                <span>
-                    @(hasLayout ? "Edit Layout" : "Create Layout")
-                </span>
-            </a>
+                    <span>
+                        @(hasLayout ? "Edit Layout" : "Create Layout")
+                    </span>
+                </a>
+            }
 
             <a class="toolbar-button"
                href="/albums/@album.Id/edit">
@@ -283,6 +286,7 @@ else
 
     private Album? album;
     private bool hasLayout;
+    private bool canManageLayout;
     private string? coverPhotoId;
     private bool canEdit;
     private string? shareUrl;
@@ -298,6 +302,8 @@ else
         album = await Catalog.GetAsync(Id);
         var layout = await Catalog.GetLayoutAsync(Id);
         hasLayout = layout is not null;
+        canManageLayout = album?.Chapters.Any(chapter => chapter.Mode == AlbumChapterMode.ChapterWithPages) == true
+            || layout?.Pages.Any(page => string.IsNullOrWhiteSpace(page.ChapterId)) == true;
         coverPhotoId = layout?.CoverPhotoId;
 
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();

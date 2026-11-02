@@ -51,12 +51,19 @@ else
             {
                 <div class="alert alert-danger mt-2 mb-0 py-2">@errorMessage</div>
             }
+            @if (LegacyPages.Count > 0)
+            {
+                <div class="alert alert-warning mt-2 mb-0 py-2">
+                    @LegacyPages.Count existing page@(LegacyPages.Count == 1 ? "" : "s") are not assigned to a chapter.
+                    They remain unchanged and continue to appear in the album.
+                </div>
+            }
         </div>
 
         <div class="layout-editor-body">
             <aside class="photo-library">
-                <h2 class="h6">Photo library</h2>
-                @if (photos.Count == 0)
+                <h2 class="h6">@(selectedPageNumber == 0 || editingLegacyPages ? "Album photo library" : "Chapter photo library")</h2>
+                @if (PhotoLibraryPhotos.Count == 0)
                 {
                     <p class="text-muted small">No photos uploaded yet. <a href="albums/@album.Id/photos/manage">Upload photos</a>.</p>
                 }
@@ -116,10 +123,10 @@ else
                 Title page
             </button>
 
-            @foreach (var albumPage in albumLayout.Pages.OrderBy(p => p.Number))
+            @foreach (var albumPage in CurrentEditorPages)
             {
                 <button type="button"
-                        @key="albumPage.Number"
+                        @key="@(selectedChapterId + albumPage.Number)"
                         class="page-tab @(selectedPageNumber == albumPage.Number ? "active" : "")"
                         @onclick="() => SelectPage(albumPage.Number)">
                     <span class="page-tab-icon">
@@ -129,12 +136,41 @@ else
                 </button>
             }
 
-            <button type="button"
-                    class="page-tab page-tab-add"
-                    @onclick="AddPage">
-                <span aria-hidden="true">+</span> Add page
-            </button>
+            @if (selectedChapter is not null)
+            {
+                <button type="button"
+                        class="page-tab page-tab-add"
+                        @onclick="AddPage">
+                    <span aria-hidden="true">+</span> Add page
+                </button>
+            }
         </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="layout-chapter">Chapter pages</label>
+        <select id="layout-chapter"
+                class="form-select"
+                value="@(editingLegacyPages ? "legacy" : selectedChapterId ?? string.Empty)"
+                @onchange="SelectChapter">
+            <option value="">Select a chapter</option>
+            @if (LegacyPages.Count > 0)
+            {
+                <option value="legacy">Legacy pages (unassigned)</option>
+            }
+            @foreach (var chapter in PageChapters)
+            {
+                <option value="@chapter.Id">@GetChapterDisplayTitle(chapter)</option>
+            }
+        </select>
+        @if (editingLegacyPages)
+        {
+            <div class="form-text">These existing pages have no chapter assignment. They remain compatible with older albums; assign a page to a chapter only when all its photos belong to that chapter.</div>
+        }
+        else if (selectedChapter is null)
+        {
+            <div class="form-text">Choose a chapter with pages to create or edit its pages. Existing unassigned pages remain available in the album.</div>
+        }
     </div>
 
     @if (selectedPageNumber == 0)
@@ -185,6 +221,10 @@ else
                                 OnPositionChanged="HandlePositionChanged" />
         </div>
     }
+    else if (selectedChapter is null && !editingLegacyPages)
+    {
+        <div class="alert alert-info">Select a chapter in “Chapter with pages” mode before editing pages.</div>
+    }
     else if (selectedPage is not null)
     {
         <div class="page-actions">
@@ -205,7 +245,7 @@ else
                 <button type="button"
                         class="btn btn-sm btn-outline-secondary"
                         @onclick="() => MovePage(selectedPage.Number, 1)"
-                        disabled="@(selectedPage.Number == albumLayout.Pages.Count)"
+                        disabled="@(selectedPage.Number == CurrentEditorPages.Count)"
                         title="Move page down">
                     ↓
                 </button>
@@ -217,6 +257,29 @@ else
                 </button>
             </div>
         </div>
+
+        @if (editingLegacyPages)
+        {
+            <div class="border rounded p-3 mb-3 bg-light">
+                <label class="form-label" for="legacy-page-chapter">Assign this page to a chapter</label>
+                <div class="d-flex gap-2">
+                    <select id="legacy-page-chapter" class="form-select" @bind="migrationTargetChapterId">
+                        <option value="">Select a chapter</option>
+                        @foreach (var chapter in PageChapters)
+                        {
+                            <option value="@chapter.Id">@GetChapterDisplayTitle(chapter)</option>
+                        }
+                    </select>
+                    <button type="button" class="btn btn-outline-primary text-nowrap" disabled="@(!CanAssignLegacyPage)" @onclick="AssignLegacyPage">
+                        Assign page
+                    </button>
+                </div>
+                @if (MigrationTargetChapter is not null && !CanAssignLegacyPage)
+                {
+                    <div class="form-text text-danger">Every photo on this page must already be selected for the chosen chapter.</div>
+                }
+            </div>
+        }
 
         <details class="editor-panel" open>
             <summary class="editor-panel-summary">
@@ -381,11 +444,46 @@ else
 @code {
     [Parameter]
     public string Id { get; set; } = string.Empty;
-        
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "chapterId")]
+    public string? ChapterId { get; set; }
+
     private Album? album;
     private ViewableAlbumLayout? albumLayout;
     private IReadOnlyList<AlbumPhoto> photos = [];
     private Dictionary<string, AlbumPhoto> photoLookup = new(StringComparer.OrdinalIgnoreCase);
+    private string? selectedChapterId;
+    private bool editingLegacyPages;
+    private string? migrationTargetChapterId;
+    private AlbumChapter? selectedChapter => album?.Chapters.FirstOrDefault(chapter => chapter.Id == selectedChapterId);
+    private AlbumChapter? MigrationTargetChapter => PageChapters.FirstOrDefault(chapter => chapter.Id == migrationTargetChapterId);
+    private IReadOnlyList<AlbumChapter> PageChapters => album?.Chapters
+        .Where(chapter => chapter.Mode == AlbumChapterMode.ChapterWithPages)
+        .OrderBy(chapter => chapter.StartDate)
+        .ThenBy(chapter => chapter.Title)
+        .ToList() ?? [];
+    private IReadOnlyList<LayoutPage> ChapterPages => albumLayout is null || selectedChapterId is null
+        ? []
+        : albumLayout.Pages
+            .Where(page => page.ChapterId == selectedChapterId)
+            .OrderBy(page => page.Number)
+            .ToList();
+    private IReadOnlyList<LayoutPage> LegacyPages => albumLayout?.Pages
+        .Where(page => string.IsNullOrWhiteSpace(page.ChapterId))
+        .OrderBy(page => page.Number)
+        .ToList() ?? [];
+    private IReadOnlyList<LayoutPage> CurrentEditorPages => editingLegacyPages ? LegacyPages : ChapterPages;
+    private bool CanAssignLegacyPage => editingLegacyPages
+        && selectedPage is not null
+        && MigrationTargetChapter is not null
+        && selectedPage.Photos
+            .Select(slot => slot.PhotoId)
+            .Where(photoId => !string.IsNullOrWhiteSpace(photoId))
+            .All(photoId => MigrationTargetChapter.PhotoIds.Contains(photoId!, StringComparer.OrdinalIgnoreCase));
+    private IReadOnlyList<AlbumPhoto> PhotoLibraryPhotos => selectedPageNumber == 0 || editingLegacyPages || selectedChapter is null
+        ? photos
+        : photos.Where(photo => selectedChapter.PhotoIds.Contains(photo.Id, StringComparer.OrdinalIgnoreCase)).ToList();
     private int selectedPageNumber;
     private LayoutPage? selectedPage;
     private string? draggedPhotoId;
@@ -398,7 +496,7 @@ else
     private string? statusMessage;
     private string? errorMessage;
     private IEnumerable<PhotoDateGroup> PhotoGroups =>
-        photos
+        PhotoLibraryPhotos
             .GroupBy(GetPhotoGroupDate)
             .OrderByDescending(group => group.Key)
             .Select(group => new PhotoDateGroup(
@@ -445,6 +543,11 @@ else
 
         photos = await Catalog.ListPhotosAsync(Id);
         photoLookup = photos.ToDictionary(photo => photo.Id, StringComparer.OrdinalIgnoreCase);
+        album.Chapters ??= [];
+        foreach (var chapter in album.Chapters)
+            chapter.PhotoIds ??= [];
+        selectedChapterId = album.Chapters.FirstOrDefault(chapter =>
+            chapter.Id == ChapterId && chapter.Mode == AlbumChapterMode.ChapterWithPages)?.Id;
         albumLayout = await Catalog.GetLayoutAsync(Id);
         layoutSaved = albumLayout is not null;
 
@@ -477,32 +580,74 @@ else
         selectedPageNumber = pageNumber;
         selectedPage = pageNumber == 0
             ? null
-            : albumLayout!.Pages.FirstOrDefault(page => page.Number == pageNumber);
+            : CurrentEditorPages.FirstOrDefault(page => page.Number == pageNumber);
+    }
+
+    private void SelectChapter(ChangeEventArgs args)
+    {
+        var chapterId = args.Value?.ToString();
+        editingLegacyPages = string.Equals(chapterId, "legacy", StringComparison.Ordinal);
+        migrationTargetChapterId = null;
+        selectedChapterId = PageChapters.FirstOrDefault(chapter => chapter.Id == chapterId)?.Id;
+        SelectPage(0);
+    }
+
+    private static string GetChapterDisplayTitle(AlbumChapter chapter) =>
+        string.IsNullOrWhiteSpace(chapter.Title)
+            ? chapter.StartDate?.ToString("d MMM yyyy") ?? "Untitled chapter"
+            : chapter.Title;
+
+    private void AssignLegacyPage()
+    {
+        if (!CanAssignLegacyPage || selectedPage is null || MigrationTargetChapter is not { } targetChapter)
+            return;
+
+        var targetPages = ChapterPages.OrderBy(page => page.Number).ToList();
+        selectedPage.ChapterId = targetChapter.Id;
+        selectedPage.Number = targetPages.Count == 0 ? 1 : targetPages[^1].Number + 1;
+        targetPages.Add(selectedPage);
+        RenumberPagesFrom(targetPages);
+        editingLegacyPages = false;
+        selectedChapterId = targetChapter.Id;
+        SelectPage(selectedPage.Number);
+        layoutSaved = false;
+        errorMessage = null;
+        statusMessage = "Legacy page assigned to the selected chapter. Save the layout to keep this change.";
     }
 
     private void AddPage()
     {
-        var nextNumber = albumLayout!.Pages.Count == 0 ? 1 : albumLayout.Pages.Max(page => page.Number) + 1;
+        if (selectedChapter is null)
+            return;
+
+        var layout = albumLayout!;
+        var chapterPages = ChapterPages;
+        var nextNumber = chapterPages.Count == 0 ? 1 : chapterPages.Max(page => page.Number) + 1;
         var page = new LayoutPage
         {
             Number = nextNumber,
+            ChapterId = selectedChapter.Id,
             TemplateId = LayoutTemplateIds.OneBig,
             Photos = LayoutTemplates.Get(LayoutTemplateIds.OneBig).Slots.ToList(),
         };
-        albumLayout.Pages.Add(page);
+        layout.Pages.Add(page);
         SelectPage(nextNumber);
     }
 
     private void DeletePage(int pageNumber)
     {
-        albumLayout!.Pages.RemoveAll(page => page.Number == pageNumber);
+        albumLayout!.Pages.RemoveAll(page =>
+            (editingLegacyPages ? string.IsNullOrWhiteSpace(page.ChapterId) : page.ChapterId == selectedChapterId)
+            && page.Number == pageNumber);
         RenumberPages();
-        SelectPage(albumLayout.Pages.Count == 0 ? 0 : albumLayout.Pages.Min(page => page.Number));
+        if (editingLegacyPages && LegacyPages.Count == 0)
+            editingLegacyPages = false;
+        SelectPage(CurrentEditorPages.Count == 0 ? 0 : CurrentEditorPages.Min(page => page.Number));
     }
 
     private void MovePage(int pageNumber, int direction)
     {
-        var pages = albumLayout!.Pages.OrderBy(page => page.Number).ToList();
+        var pages = CurrentEditorPages.ToList();
         var index = pages.FindIndex(page => page.Number == pageNumber);
         var targetIndex = index + direction;
         if (index < 0 || targetIndex < 0 || targetIndex >= pages.Count)
@@ -515,7 +660,7 @@ else
 
     private void RenumberPages()
     {
-        RenumberPagesFrom(albumLayout!.Pages.OrderBy(page => page.Number).ToList());
+        RenumberPagesFrom(CurrentEditorPages.OrderBy(page => page.Number).ToList());
     }
 
     private void RenumberPagesFrom(List<LayoutPage> pages)
@@ -523,7 +668,6 @@ else
         for (var i = 0; i < pages.Count; i++)
             pages[i].Number = i + 1;
 
-        albumLayout!.Pages = pages;
     }
 
     private void OnTemplateSelected(string templateId)
@@ -731,7 +875,9 @@ else
 
     private void ClearSlotOnPage(int pageNumber, int slotCol, int slotRow)
     {
-        var page = albumLayout!.Pages.FirstOrDefault(item => item.Number == pageNumber);
+        var page = albumLayout!.Pages.FirstOrDefault(item =>
+            (editingLegacyPages ? string.IsNullOrWhiteSpace(item.ChapterId) : item.ChapterId == selectedChapterId)
+            && item.Number == pageNumber);
         if (page is not null)
             ClearSlot(page, slotCol, slotRow);
     }

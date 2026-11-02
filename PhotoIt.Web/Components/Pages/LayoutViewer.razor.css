@@ -734,6 +734,15 @@
     color: var(--muted);
 }
 
+.chapter-pages {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.magazine-empty-chapter {
+    color: var(--muted);
+}
+
 .chapter-photo-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));

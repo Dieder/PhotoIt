@@ -15,6 +15,7 @@ public class Album
     public DateTime? TravelEndDate { get; set; }
     public bool ShowRouteOnCover { get; set; } = true;
     public bool UseChapterTitles { get; set; }
+    public AlbumChapterMode DefaultChapterMode { get; set; } = AlbumChapterMode.ChapterOnly;
     public List<AlbumChapter> Chapters { get; set; } = [];
 
     public string Intro { get; set; } = string.Empty;

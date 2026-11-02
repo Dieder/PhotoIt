@@ -95,6 +95,21 @@ public sealed class AlbumCatalog
         if (existing is null)
             return false;
 
+        var layout = await db.Set<ViewableAlbumLayout>().AsNoTracking()
+            .FirstOrDefaultAsync(candidate => candidate.AlbumId == album.Id, ct);
+        if (layout is not null)
+        {
+            var albumPhotoIds = await db.Set<AlbumPhoto>().AsNoTracking()
+                .Where(photo => photo.AlbumId == album.Id)
+                .Select(photo => photo.Id)
+                .ToListAsync(ct);
+            AlbumChapterPageRules.Validate(
+                album,
+                layout.Pages,
+                albumPhotoIds.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                layout.Pages.Count(page => string.IsNullOrWhiteSpace(page.ChapterId)));
+        }
+
         db.Set<Album>().Update(album);
         await db.SaveChangesAsync(ct);
         return true;
@@ -176,11 +191,21 @@ public sealed class AlbumCatalog
     {
         await using var db = _contextFactory.CreateDbContext();
         var photo = await db.Set<AlbumPhoto>().FirstOrDefaultAsync(existing => existing.Id == id, ct);
-        if (photo is null)
+        if (photo is null || await IsPhotoReferencedAsync(id, ct))
             return false;
 
         db.Remove(photo);
         return await db.SaveChangesAsync(ct) > 0;
+    }
+
+    public async Task<bool> IsPhotoReferencedAsync(string photoId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(photoId);
+
+        await using var db = _contextFactory.CreateDbContext();
+        var albums = await db.Set<Album>().AsNoTracking().ToListAsync(ct);
+        var layouts = await db.Set<ViewableAlbumLayout>().AsNoTracking().ToListAsync(ct);
+        return AlbumPhotoReferenceChecker.IsReferenced(photoId, albums, layouts);
     }
 
     public async Task<bool> UpdatePhotoAsync(AlbumPhoto photo, CancellationToken ct = default)
@@ -239,9 +264,24 @@ public sealed class AlbumCatalog
         layout.UpdatedUtc = DateTime.UtcNow;
         await using var db = _contextFactory.CreateDbContext();
         var existing = await db.Set<ViewableAlbumLayout>()
-            .Where(existing => existing.AlbumId == layout.AlbumId)
+            .Where(candidate => candidate.AlbumId == layout.AlbumId)
             .AsNoTracking()
-            .FirstOrDefaultAsync(existing => existing.AlbumId == layout.AlbumId, ct);
+            .FirstOrDefaultAsync(candidate => candidate.AlbumId == layout.AlbumId, ct);
+        var albumForValidation = await db.Set<Album>().AsNoTracking()
+            .FirstOrDefaultAsync(candidate => candidate.Id == layout.AlbumId, ct);
+        if (albumForValidation is null)
+            throw new InvalidOperationException("The album for this layout could not be found.");
+
+        var albumPhotoIds = await db.Set<AlbumPhoto>().AsNoTracking()
+            .Where(photo => photo.AlbumId == layout.AlbumId)
+            .Select(photo => photo.Id)
+            .ToListAsync(ct);
+        AlbumChapterPageRules.Validate(
+            albumForValidation,
+            layout.Pages,
+            albumPhotoIds.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            existing?.Pages.Count(page => string.IsNullOrWhiteSpace(page.ChapterId)) ?? 0);
+
         if (existing is not null)
             db.Set<ViewableAlbumLayout>().Update(layout);
         else

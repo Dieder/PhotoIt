@@ -250,3 +250,38 @@
     color: #465563;
     background: #eef0f0;
 }
+.album-photo-delete-dialog {
+    width: min(100% - 2rem, 34rem);
+    padding: 1.5rem;
+    border-radius: 1rem;
+    background: #fff;
+    box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 25%);
+}
+
+.album-photo-delete-dialog .album-photo-preview-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.album-photo-delete-summary {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.25rem 0;
+    overflow-wrap: anywhere;
+}
+
+.album-photo-delete-summary img,
+.album-photo-delete-summary .album-photo-search-thumbnail {
+    width: 5rem;
+    height: 5rem;
+    flex: 0 0 5rem;
+    object-fit: cover;
+    border-radius: .5rem;
+}
+
+.album-photo-delete-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .75rem;
+}

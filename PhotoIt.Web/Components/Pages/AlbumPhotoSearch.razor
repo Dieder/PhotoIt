@@ -107,7 +107,7 @@ else
                                 }
                                 <button type="button"
                                         class="album-photo-search-action danger"
-                                        @onclick="() => DeleteAsync(photo)">Delete</button>
+                                        @onclick="() => RequestDeleteAsync(photo)">Delete</button>
                             </div>
                         }
                     </article>
@@ -161,6 +161,40 @@ else
     </div>
 }
 
+@if (PendingDeletePhoto is not null)
+{
+    <div class="album-photo-preview-backdrop" role="presentation" @onclick="CancelDelete">
+        <section class="album-photo-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-photo-title" @onclick:stopPropagation="true">
+            <div class="album-photo-preview-header">
+                <h2 id="delete-photo-title">Permanently delete this photo?</h2>
+                <button type="button" class="album-photo-preview-close" aria-label="Cancel deletion" disabled="@isDeleting" @onclick="CancelDelete">×</button>
+            </div>
+            <div class="album-photo-delete-summary">
+                @if (PhotoType.IsVideo(PendingDeletePhoto))
+                {
+                    <span class="album-photo-search-thumbnail album-photo-search-video" aria-hidden="true">▶</span>
+                }
+                else
+                {
+                    <img src="@GetThumbnailUrl(PendingDeletePhoto.Id)" alt="" />
+                }
+                <strong>@PendingDeletePhoto.OriginalFileName</strong>
+            </div>
+            <p>This permanently removes the uploaded file and cannot be undone.</p>
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <div class="alert alert-danger" role="alert">@errorMessage</div>
+            }
+            <div class="album-photo-delete-actions">
+                <button type="button" class="btn btn-outline-secondary" disabled="@isDeleting" @onclick="CancelDelete">Cancel</button>
+                <button type="button" class="btn btn-danger" disabled="@isDeleting" @onclick="ConfirmDeleteAsync">
+                    @(isDeleting ? "Deleting…" : "Delete photo")
+                </button>
+            </div>
+        </section>
+    </div>
+}
+
 @code {
     [Parameter]
     public string Id { get; set; } = string.Empty;
@@ -171,6 +205,8 @@ else
     private string? previewPhotoId;
     private bool canEdit;
     private string? errorMessage;
+    private string? pendingDeletePhotoId;
+    private bool isDeleting;
     private readonly HashSet<string> indexingPhotoIds = new(StringComparer.OrdinalIgnoreCase);
 
     private List<AlbumPhoto> SearchResults
@@ -188,6 +224,7 @@ else
     }
 
     private AlbumPhoto? PreviewPhoto => photos.FirstOrDefault(photo => photo.Id == previewPhotoId);
+    private AlbumPhoto? PendingDeletePhoto => photos.FirstOrDefault(photo => photo.Id == pendingDeletePhotoId);
 
     protected override async Task OnInitializedAsync()
     {
@@ -272,7 +309,7 @@ else
         }
     }
 
-    private async Task DeleteAsync(AlbumPhoto photo)
+    private async Task RequestDeleteAsync(AlbumPhoto photo)
     {
         if (!canEdit || album is null)
             return;
@@ -280,26 +317,62 @@ else
         errorMessage = null;
         try
         {
+            if (await Catalog.IsPhotoReferencedAsync(photo.Id))
+            {
+                errorMessage = "This photo is still used by an album cover, chapter, or page. Remove those references before deleting it.";
+                return;
+            }
+
+            pendingDeletePhotoId = photo.Id;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Photo reference check failed. AlbumId: {AlbumId}, MediaId: {MediaId}", photo.AlbumId, photo.Id);
+            errorMessage = $"Could not check whether the photo is in use: {exception.Message}";
+        }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (!canEdit || album is null || PendingDeletePhoto is not { } photo)
+            return;
+
+        isDeleting = true;
+        errorMessage = null;
+        var photoRecordDeleted = false;
+        try
+        {
+            if (!await Catalog.DeletePhotoAsync(photo.Id))
+            {
+                errorMessage = "The photo is in use or no longer exists. Remove its references before deleting it.";
+                return;
+            }
+
+            photoRecordDeleted = true;
+            pendingDeletePhotoId = null;
+            previewPhotoId = null;
+            photos = await Catalog.ListPhotosAsync(Id);
             if (!string.IsNullOrWhiteSpace(photo.ThumbnailBlobName))
                 await Storage.DeleteAsync(photo.ThumbnailBlobName);
             await Storage.DeleteAsync(photo.BlobName);
-            await Catalog.DeletePhotoAsync(photo.Id);
-            foreach (var chapter in album.Chapters)
-            {
-                chapter.PhotoIds.RemoveAll(photoId => photoId == photo.Id);
-                if (chapter.ThumbnailPhotoId == photo.Id)
-                    chapter.ThumbnailPhotoId = chapter.PhotoIds.FirstOrDefault();
-            }
-            album.Chapters.RemoveAll(chapter => chapter.PhotoIds.Count == 0);
-            await Catalog.UpdateAsync(album);
             await Catalog.TouchAsync(Id);
-            photos = await Catalog.ListPhotosAsync(Id);
-            previewPhotoId = null;
         }
         catch (Exception exception)
         {
             Logger.LogError(exception, "Media deletion failed. AlbumId: {AlbumId}, MediaId: {MediaId}", photo.AlbumId, photo.Id);
-            errorMessage = $"Photo deletion failed: {exception.Message}";
+            errorMessage = photoRecordDeleted
+                ? $"The photo was removed from the album, but its blob cleanup failed: {exception.Message}"
+                : $"Photo deletion failed: {exception.Message}";
         }
+        finally
+        {
+            isDeleting = false;
+        }
+    }
+
+    private void CancelDelete()
+    {
+        if (!isDeleting)
+            pendingDeletePhotoId = null;
     }
 }

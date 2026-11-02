@@ -7,5 +7,6 @@ public sealed class AlbumChapter
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
     public string? ThumbnailPhotoId { get; set; }
+    public AlbumChapterMode Mode { get; set; } = AlbumChapterMode.ChapterOnly;
     public List<string> PhotoIds { get; set; } = [];
 }
