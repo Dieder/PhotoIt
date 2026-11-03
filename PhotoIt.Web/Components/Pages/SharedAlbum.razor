@@ -8,7 +8,14 @@
 
 <PageTitle>@(album?.Name ?? "Shared album")</PageTitle>
 
-@if (album is null)
+@if (isLoading)
+{
+    <div class="d-flex justify-content-center align-items-center py-5" role="status" aria-live="polite">
+        <span class="spinner-border text-primary" aria-hidden="true"></span>
+        <span class="visually-hidden">Loading shared album...</span>
+    </div>
+}
+else if (album is null)
 {
     <div class="alert alert-warning">Shared album not found.</div>
 }
@@ -25,9 +32,17 @@ else
     public int Seed { get; set; }
 
     private Album? album;
+    private bool isLoading = true;
 
     protected override async Task OnInitializedAsync()
     {
-        album = await Catalog.GetSharedAsync(Slug, Seed);
+        try
+        {
+            album = await Catalog.GetSharedAsync(Slug, Seed);
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 }

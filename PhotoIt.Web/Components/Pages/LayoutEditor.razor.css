@@ -102,6 +102,92 @@
     min-width: 0;
 }
 
+.layout-chapter-picker {
+    display: grid;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.75rem;
+    background: #f8f9fa;
+}
+
+.layout-chapter-picker-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.layout-chapter-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+    gap: 0.75rem;
+}
+
+.layout-chapter-card {
+    min-width: 0;
+    padding: 0.55rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.6rem;
+    color: #212529;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+}
+
+.layout-chapter-card:hover {
+    border-color: #9ec5fe;
+    background: #f8fbff;
+}
+
+.layout-chapter-card.active {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.15rem rgb(13 110 253 / 12%);
+}
+
+.layout-chapter-card-thumbnail {
+    width: 4.25rem;
+    height: 4.25rem;
+    flex: 0 0 4.25rem;
+    border-radius: 0.4rem;
+    object-fit: cover;
+    background: #e9ecef;
+}
+
+.layout-chapter-card-placeholder {
+    display: grid;
+    place-items: center;
+    color: #6c757d;
+    font-size: 1.5rem;
+}
+
+.layout-chapter-card-copy {
+    min-width: 0;
+    display: grid;
+    gap: 0.2rem;
+}
+
+.layout-chapter-card-copy strong,
+.layout-chapter-card-copy span,
+.layout-chapter-card-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.layout-chapter-card-copy strong {
+    font-size: 0.9rem;
+}
+
+.layout-chapter-card-copy span,
+.layout-chapter-card-copy small {
+    color: #6c757d;
+    font-size: 0.78rem;
+}
+
 
 
 /* Main editing workspace */

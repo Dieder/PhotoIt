@@ -265,7 +265,6 @@ public sealed class AlbumCatalog
         await using var db = _contextFactory.CreateDbContext();
         var existing = await db.Set<ViewableAlbumLayout>()
             .Where(candidate => candidate.AlbumId == layout.AlbumId)
-            .AsNoTracking()
             .FirstOrDefaultAsync(candidate => candidate.AlbumId == layout.AlbumId, ct);
         var albumForValidation = await db.Set<Album>().AsNoTracking()
             .FirstOrDefaultAsync(candidate => candidate.Id == layout.AlbumId, ct);
@@ -282,10 +281,10 @@ public sealed class AlbumCatalog
             albumPhotoIds.ToHashSet(StringComparer.OrdinalIgnoreCase),
             existing?.Pages.Count(page => string.IsNullOrWhiteSpace(page.ChapterId)) ?? 0);
 
-        if (existing is not null)
-            db.Set<ViewableAlbumLayout>().Update(layout);
-        else
-            db.Set<ViewableAlbumLayout>().Add(layout);
+        var layoutToSave = existing ?? new ViewableAlbumLayout { AlbumId = layout.AlbumId };
+        LayoutGraphUpdater.CopyInto(layoutToSave, layout);
+        if (existing is null)
+            db.Set<ViewableAlbumLayout>().Add(layoutToSave);
 
         var album = await db.Set<Album>().FirstOrDefaultAsync(album => album.Id == layout.AlbumId, ct);
         if (album is not null)

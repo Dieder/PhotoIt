@@ -21,7 +21,14 @@
 
 <PageTitle>Photos - @(album?.Name ?? "Album")</PageTitle>
 
-@if (album is null)
+@if (isLoading)
+{
+    <div class="d-flex justify-content-center align-items-center py-5" role="status" aria-live="polite">
+        <span class="spinner-border text-primary" aria-hidden="true"></span>
+        <span class="visually-hidden">Loading album photos...</span>
+    </div>
+}
+else if (album is null)
 {
     <div class="alert alert-warning">Album not found.</div>
     <BackToAlbum />    
@@ -292,6 +299,7 @@ else
     public string Id { get; set; } = string.Empty;
 
     private Album? album;
+    private bool isLoading = true;
     private ViewableAlbumLayout? albumLayout;
     private IReadOnlyList<AlbumPhoto> photos = [];
     private string activeTab = "upload";
@@ -360,21 +368,28 @@ else
     private int TaggingPercent => TaggingItems == 0 ? 0 : (int)((TaggingComplete / (double)TaggingItems) * 100);
     protected override async Task OnInitializedAsync()
     {
-        album = await Catalog.GetAsync(Id);
-        if (album is not null)
+        try
         {
+            album = await Catalog.GetAsync(Id);
+            if (album is null)
+                return;
+
             album.Chapters ??= [];
             foreach (var chapter in album.Chapters)
                 chapter.PhotoIds ??= [];
+            albumLayout = await Catalog.GetLayoutAsync(Id);
+            await LoadPhotosAsync();
+
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            canEdit = CurrentUserHelper.GetUserId(authState.User) == album.UserId;
+
+            _ = RefreshExifMetadataAsync();
+            _ = WaitForModelAsync();
         }
-        albumLayout = await Catalog.GetLayoutAsync(Id);
-        await LoadPhotosAsync();
-
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        canEdit = CurrentUserHelper.GetUserId(authState.User) == album?.UserId;
-
-        _ = RefreshExifMetadataAsync();
-        _ = WaitForModelAsync();
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     private async Task RefreshExifMetadataAsync()

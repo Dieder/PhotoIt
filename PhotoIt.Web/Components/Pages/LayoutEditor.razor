@@ -14,7 +14,14 @@
 
 <PageTitle>Edit layout - @(album?.Name ?? "Album")</PageTitle>
 
-@if (album is null)
+@if (isLoading)
+{
+    <div class="d-flex justify-content-center align-items-center py-5" role="status" aria-live="polite">
+        <span class="spinner-border text-primary" aria-hidden="true"></span>
+        <span class="visually-hidden">Loading layout editor...</span>
+    </div>
+}
+else if (album is null)
 {
     <div class="alert alert-warning">Album not found.</div>
     <a href="albums">Back to albums</a>
@@ -62,10 +69,21 @@ else
 
         <div class="layout-editor-body">
             <aside class="photo-library">
-                <h2 class="h6">@(selectedPageNumber == 0 || editingLegacyPages ? "Album photo library" : "Chapter photo library")</h2>
+                <h2 class="h6">@(editingLegacyPages ? "Album photo library" : selectedChapter is null ? "Select a chapter" : $"Photos in {GetChapterDisplayTitle(selectedChapter)}")</h2>
                 @if (PhotoLibraryPhotos.Count == 0)
                 {
-                    <p class="text-muted small">No photos uploaded yet. <a href="albums/@album.Id/photos/manage">Upload photos</a>.</p>
+                    @if (selectedChapter is not null && !editingLegacyPages)
+                    {
+                        <p class="text-muted small">No photos are assigned to this chapter.</p>
+                    }
+                    else if (editingLegacyPages)
+                    {
+                        <p class="text-muted small">No photos uploaded yet. <a href="albums/@album.Id/photos/manage">Upload photos</a>.</p>
+                    }
+                    else
+                    {
+                        <p class="text-muted small">Select a chapter to see its photos.</p>
+                    }
                 }
                 else
                 {
@@ -114,15 +132,74 @@ else
             
 <main class="page-editor">
 
+    <section class="layout-chapter-picker mb-3" aria-labelledby="layout-chapter-heading">
+        <div class="layout-chapter-picker-heading">
+            <div>
+                <h2 id="layout-chapter-heading" class="h5 mb-1">Chapters</h2>
+                <p class="text-muted mb-0">Select a chapter to create or edit its pages.</p>
+            </div>
+            <a class="btn btn-sm btn-outline-secondary" href="/albums/@album.Id/photos/manage">Manage chapters</a>
+        </div>
+
+        @if (PageChapters.Count == 0)
+        {
+            <p class="text-muted mb-0">No chapters yet. Add chapters in Manage Photos first.</p>
+        }
+        else
+        {
+            <div class="layout-chapter-picker-grid">
+                @foreach (var chapter in PageChapters)
+                {
+                    var thumbnailId = GetChapterThumbnailId(chapter);
+                    <button type="button"
+                            class="layout-chapter-card @(selectedChapterId == chapter.Id && !editingLegacyPages ? "active" : "")"
+                            aria-pressed="@(selectedChapterId == chapter.Id && !editingLegacyPages)"
+                            @onclick="() => SelectChapter(chapter.Id)">
+                        @if (!string.IsNullOrWhiteSpace(thumbnailId))
+                        {
+                            <img class="layout-chapter-card-thumbnail"
+                                 src="@($"/albums/{album.Id}/photos/{thumbnailId}/thumbnail")"
+                                 alt="" />
+                        }
+                        else
+                        {
+                            <span class="layout-chapter-card-thumbnail layout-chapter-card-placeholder" aria-hidden="true">✦</span>
+                        }
+                        <span class="layout-chapter-card-copy">
+                            <strong>@GetChapterDisplayTitle(chapter)</strong>
+                            <span>@GetChapterPeriod(chapter)</span>
+                            <small>@GetChapterModeLabel(chapter.Mode)</small>
+                        </span>
+                    </button>
+                }
+            </div>
+        }
+
+        @if (LegacyPages.Count > 0)
+        {
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary mt-2"
+                    @onclick="SelectLegacyPages">
+                Edit legacy unassigned pages (@LegacyPages.Count)
+            </button>
+        }
+
+        @if (selectedChapter is not null && selectedChapter.Mode != AlbumChapterMode.ChapterWithPages)
+        {
+            <div class="alert alert-info mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span>This chapter currently displays its selected photos directly.</span>
+                <button type="button"
+                        class="btn btn-sm btn-primary"
+                        disabled="@isEnablingChapterPages"
+                        @onclick="EnableChapterPagesAsync">
+                    @(isEnablingChapterPages ? "Enabling..." : "Use page layouts for this chapter")
+                </button>
+            </div>
+        }
+    </section>
+
     <div class="page-editor-toolbar">
         <div class="page-tabs">
-            <button type="button"
-                    class="page-tab @(selectedPageNumber == 0 ? "active" : "")"
-                    @onclick="() => SelectPage(0)">
-                <span class="page-tab-icon">T</span>
-                Title page
-            </button>
-
             @foreach (var albumPage in CurrentEditorPages)
             {
                 <button type="button"
@@ -136,7 +213,7 @@ else
                 </button>
             }
 
-            @if (selectedChapter is not null)
+            @if (selectedChapter?.Mode == AlbumChapterMode.ChapterWithPages)
             {
                 <button type="button"
                         class="page-tab page-tab-add"
@@ -147,83 +224,9 @@ else
         </div>
     </div>
 
-    <div class="mb-3">
-        <label class="form-label" for="layout-chapter">Chapter pages</label>
-        <select id="layout-chapter"
-                class="form-select"
-                value="@(editingLegacyPages ? "legacy" : selectedChapterId ?? string.Empty)"
-                @onchange="SelectChapter">
-            <option value="">Select a chapter</option>
-            @if (LegacyPages.Count > 0)
-            {
-                <option value="legacy">Legacy pages (unassigned)</option>
-            }
-            @foreach (var chapter in PageChapters)
-            {
-                <option value="@chapter.Id">@GetChapterDisplayTitle(chapter)</option>
-            }
-        </select>
-        @if (editingLegacyPages)
-        {
-            <div class="form-text">These existing pages have no chapter assignment. They remain compatible with older albums; assign a page to a chapter only when all its photos belong to that chapter.</div>
-        }
-        else if (selectedChapter is null)
-        {
-            <div class="form-text">Choose a chapter with pages to create or edit its pages. Existing unassigned pages remain available in the album.</div>
-        }
-    </div>
-
-    @if (selectedPageNumber == 0)
+    @if (selectedChapter is null && !editingLegacyPages)
     {
-        <details class="editor-panel" open>
-            <summary class="editor-panel-summary">
-                <span class="editor-panel-icon">T</span>
-                <span class="editor-panel-heading">
-                    <strong>Title page content</strong>
-                    <small>Album title and subtitle</small>
-                </span>
-                <span class="editor-panel-chevron"></span>
-            </summary>
-
-            <div class="editor-panel-content">
-                <div class="mb-3">
-                    <label class="form-label" for="layout-title">Title</label>
-                    <input id="layout-title"
-                           class="form-control"
-                           @bind="albumLayout.Title"
-                           @bind:event="oninput" />
-                </div>
-
-                <div class="mb-0">
-                    <label class="form-label" for="layout-subtitle">Subtitle</label>
-                    <textarea id="layout-subtitle"
-                              class="form-control"
-                              rows="3"
-                              @bind="albumLayout.Subtitle"
-                              @bind:event="oninput"></textarea>
-                </div>
-            </div>
-        </details>
-
-        <div class="layout-preview">
-            <LayoutPageRenderer AlbumId="@album.Id"
-                                IsTitlePage="true"
-                                PageNumber="0"
-                                Title="@albumLayout.Title"
-                                Subtitle="@albumLayout.Subtitle"
-                                CoverPhotoId="@albumLayout.CoverPhotoId"
-                                PhotoLookup="@photoLookup"
-                                Editable="true"
-                                OnPhotoDragStarted="HandleDragStarted"
-                                OnPhotoDropped="HandleDropped"
-                                OnPhotoRemoved="HandleRemoved"
-                                OnZoomChanged="HandleZoomChanged"
-                                OnPositionChanged="HandlePositionChanged" />
-        </div>
-    }
-    else if (selectedChapter is null && !editingLegacyPages)
-    {
-        <div class="alert alert-info">Select a chapter in “Chapter with pages” mode before editing pages.</div>
+        <div class="alert alert-info">Select a chapter to view its pages and photos.</div>
     }
     else if (selectedPage is not null)
     {
@@ -435,6 +438,19 @@ else
                                 OnPositionChanged="HandlePositionChanged" />
         </div>
     }
+    else
+    {
+        <div class="alert alert-info">
+            @if (editingLegacyPages)
+            {
+                <span>Select a legacy page to edit it.</span>
+            }
+            else
+            {
+                <span>Select a page or add one to start designing this chapter.</span>
+            }
+        </div>
+    }
 </main>
 
         </div>
@@ -450,6 +466,7 @@ else
     public string? ChapterId { get; set; }
 
     private Album? album;
+    private bool isLoading = true;
     private ViewableAlbumLayout? albumLayout;
     private IReadOnlyList<AlbumPhoto> photos = [];
     private Dictionary<string, AlbumPhoto> photoLookup = new(StringComparer.OrdinalIgnoreCase);
@@ -459,7 +476,6 @@ else
     private AlbumChapter? selectedChapter => album?.Chapters.FirstOrDefault(chapter => chapter.Id == selectedChapterId);
     private AlbumChapter? MigrationTargetChapter => PageChapters.FirstOrDefault(chapter => chapter.Id == migrationTargetChapterId);
     private IReadOnlyList<AlbumChapter> PageChapters => album?.Chapters
-        .Where(chapter => chapter.Mode == AlbumChapterMode.ChapterWithPages)
         .OrderBy(chapter => chapter.StartDate)
         .ThenBy(chapter => chapter.Title)
         .ToList() ?? [];
@@ -481,9 +497,11 @@ else
             .Select(slot => slot.PhotoId)
             .Where(photoId => !string.IsNullOrWhiteSpace(photoId))
             .All(photoId => MigrationTargetChapter.PhotoIds.Contains(photoId!, StringComparer.OrdinalIgnoreCase));
-    private IReadOnlyList<AlbumPhoto> PhotoLibraryPhotos => selectedPageNumber == 0 || editingLegacyPages || selectedChapter is null
+    private IReadOnlyList<AlbumPhoto> PhotoLibraryPhotos => editingLegacyPages
         ? photos
-        : photos.Where(photo => selectedChapter.PhotoIds.Contains(photo.Id, StringComparer.OrdinalIgnoreCase)).ToList();
+        : selectedChapter is null
+            ? []
+            : photos.Where(photo => selectedChapter.PhotoIds.Contains(photo.Id, StringComparer.OrdinalIgnoreCase)).ToList();
     private int selectedPageNumber;
     private LayoutPage? selectedPage;
     private string? draggedPhotoId;
@@ -492,17 +510,18 @@ else
     private bool draggedFromTitlePage;
     private int? draggedFromPageNumber;
     private bool isSaving;
+    private bool isEnablingChapterPages;
     private bool layoutSaved;
     private string? statusMessage;
     private string? errorMessage;
     private IEnumerable<PhotoDateGroup> PhotoGroups =>
         PhotoLibraryPhotos
             .GroupBy(GetPhotoGroupDate)
-            .OrderByDescending(group => group.Key)
+            .OrderBy(group => group.Key)
             .Select(group => new PhotoDateGroup(
                 group.Key,
                 group.Key.ToString("dddd d MMMM yyyy"),
-                group.OrderByDescending(GetPhotoSortDate)
+                group.OrderBy(GetPhotoSortDate)
                     .ThenBy(photo => photo.OriginalFileName, StringComparer.OrdinalIgnoreCase)
                     .ToList()));
 
@@ -528,51 +547,57 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        album = await Catalog.GetAsync(Id);
-       
-        if (album is null)
-            return;
-
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var currentUserId = CurrentUserHelper.GetUserId(authState.User);
-        if (currentUserId != album.UserId)
-        {
-            Navigation.NavigateTo($"albums/{album.Id}");
-            return;
-        }
-
-        photos = await Catalog.ListPhotosAsync(Id);
-        photoLookup = photos.ToDictionary(photo => photo.Id, StringComparer.OrdinalIgnoreCase);
-        album.Chapters ??= [];
-        foreach (var chapter in album.Chapters)
-            chapter.PhotoIds ??= [];
-        selectedChapterId = album.Chapters.FirstOrDefault(chapter =>
-            chapter.Id == ChapterId && chapter.Mode == AlbumChapterMode.ChapterWithPages)?.Id;
-        albumLayout = await Catalog.GetLayoutAsync(Id);
-        layoutSaved = albumLayout is not null;
-
-        if (albumLayout is null)
-        {
-            albumLayout = new ViewableAlbumLayout
-            {
-                AlbumId = Id,
-                Title = album.Name,
-                Subtitle = album.FullDescription,
-            };
-        }
-
-        // Load templates from wwwroot/data/layout-templates.json if present
         try
         {
-            layoutTemplates = await Http.GetFromJsonAsync<List<PhotoIt.Data.LayoutTemplate>>("/data/layout-templates.json")
-                             ?? LayoutTemplates.All.ToList();
-        }
-        catch
-        {
-            layoutTemplates = LayoutTemplates.All.ToList();
-        }
+            album = await Catalog.GetAsync(Id);
+            if (album is null)
+                return;
 
-        SelectPage(0);
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var currentUserId = CurrentUserHelper.GetUserId(authState.User);
+            if (currentUserId != album.UserId)
+            {
+                Navigation.NavigateTo($"albums/{album.Id}");
+                return;
+            }
+
+            photos = await Catalog.ListPhotosAsync(Id);
+            photoLookup = photos.ToDictionary(photo => photo.Id, StringComparer.OrdinalIgnoreCase);
+            album.Chapters ??= [];
+            foreach (var chapter in album.Chapters)
+                chapter.PhotoIds ??= [];
+            selectedChapterId = album.Chapters.FirstOrDefault(chapter => chapter.Id == ChapterId)?.Id
+                ?? album.Chapters.FirstOrDefault(chapter => chapter.Mode == AlbumChapterMode.ChapterWithPages)?.Id;
+            albumLayout = await Catalog.GetLayoutAsync(Id);
+            layoutSaved = albumLayout is not null;
+
+            if (albumLayout is null)
+            {
+                albumLayout = new ViewableAlbumLayout
+                {
+                    AlbumId = Id,
+                    Title = album.Name,
+                    Subtitle = album.FullDescription,
+                };
+            }
+
+            // Load templates from wwwroot/data/layout-templates.json if present
+            try
+            {
+                layoutTemplates = await Http.GetFromJsonAsync<List<PhotoIt.Data.LayoutTemplate>>("/data/layout-templates.json")
+                                 ?? LayoutTemplates.All.ToList();
+            }
+            catch
+            {
+                layoutTemplates = LayoutTemplates.All.ToList();
+            }
+
+            SelectPage(ChapterPages.FirstOrDefault()?.Number ?? 0);
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     private void SelectPage(int pageNumber)
@@ -583,19 +608,95 @@ else
             : CurrentEditorPages.FirstOrDefault(page => page.Number == pageNumber);
     }
 
-    private void SelectChapter(ChangeEventArgs args)
+    private void SelectChapter(string chapterId)
     {
-        var chapterId = args.Value?.ToString();
-        editingLegacyPages = string.Equals(chapterId, "legacy", StringComparison.Ordinal);
+        editingLegacyPages = false;
         migrationTargetChapterId = null;
         selectedChapterId = PageChapters.FirstOrDefault(chapter => chapter.Id == chapterId)?.Id;
-        SelectPage(0);
+        SelectPage(ChapterPages.FirstOrDefault()?.Number ?? 0);
+    }
+
+    private void SelectLegacyPages()
+    {
+        editingLegacyPages = true;
+        migrationTargetChapterId = null;
+        SelectPage(LegacyPages.FirstOrDefault()?.Number ?? 0);
     }
 
     private static string GetChapterDisplayTitle(AlbumChapter chapter) =>
         string.IsNullOrWhiteSpace(chapter.Title)
             ? chapter.StartDate?.ToString("d MMM yyyy") ?? "Untitled chapter"
             : chapter.Title;
+
+    private string? GetChapterThumbnailId(AlbumChapter chapter)
+    {
+        if (chapter.ThumbnailPhotoId is not null
+            && photoLookup.TryGetValue(chapter.ThumbnailPhotoId, out var thumbnail)
+            && !PhotoType.IsVideo(thumbnail))
+            return thumbnail.Id;
+
+        return chapter.PhotoIds
+            .Where(photoLookup.ContainsKey)
+            .Select(photoId => photoLookup[photoId])
+            .FirstOrDefault(photo => !PhotoType.IsVideo(photo))?.Id;
+    }
+
+    private string GetChapterPeriod(AlbumChapter chapter)
+    {
+        var chapterPhotos = chapter.PhotoIds
+            .Where(photoLookup.ContainsKey)
+            .Select(photoId => AlbumCatalog.GetDisplayDate(photoLookup[photoId]).Date)
+            .Order()
+            .ToList();
+        var start = chapter.StartDate?.Date ?? chapterPhotos.FirstOrDefault();
+        if (start == default)
+            return "Dates not set";
+
+        var nextChapterStart = album?.Chapters
+            .Where(candidate => candidate.Id != chapter.Id
+                && candidate.StartDate.HasValue
+                && candidate.StartDate.Value.Date > start)
+            .Select(candidate => (DateTime?)candidate.StartDate!.Value.Date)
+            .OrderBy(date => date)
+            .FirstOrDefault();
+        var end = chapter.EndDate?.Date
+            ?? nextChapterStart?.AddDays(-1)
+            ?? (chapterPhotos.Count > 0 ? chapterPhotos[^1] : start);
+        return start == end ? start.ToString("d MMM yyyy") : $"{start:d MMM yyyy} – {end:d MMM yyyy}";
+    }
+
+    private static string GetChapterModeLabel(AlbumChapterMode mode) =>
+        mode == AlbumChapterMode.ChapterWithPages ? "Page layouts" : "Photo list";
+
+    private async Task EnableChapterPagesAsync()
+    {
+        if (album is null || selectedChapter is null)
+            return;
+
+        var chapter = selectedChapter;
+        isEnablingChapterPages = true;
+        errorMessage = null;
+        statusMessage = null;
+        try
+        {
+            chapter.Mode = AlbumChapterMode.ChapterWithPages;
+            if (!await Catalog.UpdateAsync(album))
+                throw new InvalidOperationException("The album could not be updated.");
+
+            layoutSaved = false;
+            statusMessage = "Page layouts enabled for this chapter. Add pages below, then save the layout.";
+        }
+        catch (Exception exception)
+        {
+            chapter.Mode = AlbumChapterMode.ChapterOnly;
+            Logger.LogError(exception, "Could not enable chapter page layouts. AlbumId: {AlbumId}, ChapterId: {ChapterId}", album.Id, chapter.Id);
+            errorMessage = $"Could not enable page layouts: {exception.Message}";
+        }
+        finally
+        {
+            isEnablingChapterPages = false;
+        }
+    }
 
     private void AssignLegacyPage()
     {
@@ -617,7 +718,7 @@ else
 
     private void AddPage()
     {
-        if (selectedChapter is null)
+        if (selectedChapter is not { Mode: AlbumChapterMode.ChapterWithPages } chapter)
             return;
 
         var layout = albumLayout!;
@@ -626,7 +727,7 @@ else
         var page = new LayoutPage
         {
             Number = nextNumber,
-            ChapterId = selectedChapter.Id,
+            ChapterId = chapter.Id,
             TemplateId = LayoutTemplateIds.OneBig,
             Photos = LayoutTemplates.Get(LayoutTemplateIds.OneBig).Slots.ToList(),
         };

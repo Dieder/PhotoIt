@@ -12,7 +12,14 @@
 
 <PageTitle>@(album?.Name ?? "Album")</PageTitle>
 
-@if (album is null)
+@if (isLoading)
+{
+    <div class="d-flex justify-content-center align-items-center py-5" role="status" aria-live="polite">
+        <span class="spinner-border text-primary" aria-hidden="true"></span>
+        <span class="visually-hidden">Loading album...</span>
+    </div>
+}
+else if (album is null)
 {
     <div class="alert alert-warning">
         Album not found.
@@ -74,21 +81,18 @@ else
                 <span>Manage Photos</span>
             </a>
 
-            @if (canManageLayout)
-            {
-                <a class="toolbar-button"
-                   href="/albums/@album.Id/layout/edit">
+            <a class="toolbar-button"
+               href="/albums/@album.Id/layout/edit">
 
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"
-                              stroke-width="2" />
-                    </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"
+                          stroke-width="2" />
+                </svg>
 
-                    <span>
-                        @(hasLayout ? "Edit Layout" : "Create Layout")
-                    </span>
-                </a>
-            }
+                <span>
+                    @(hasLayout ? "Edit Layout" : "Create Layout")
+                </span>
+            </a>
 
             <a class="toolbar-button"
                href="/albums/@album.Id/edit">
@@ -285,8 +289,8 @@ else
     public string Id { get; set; } = string.Empty;
 
     private Album? album;
+    private bool isLoading = true;
     private bool hasLayout;
-    private bool canManageLayout;
     private string? coverPhotoId;
     private bool canEdit;
     private string? shareUrl;
@@ -299,26 +303,34 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        album = await Catalog.GetAsync(Id);
-        var layout = await Catalog.GetLayoutAsync(Id);
-        hasLayout = layout is not null;
-        canManageLayout = album?.Chapters.Any(chapter => chapter.Mode == AlbumChapterMode.ChapterWithPages) == true
-            || layout?.Pages.Any(page => string.IsNullOrWhiteSpace(page.ChapterId)) == true;
-        coverPhotoId = layout?.CoverPhotoId;
-
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        canEdit = CurrentUserHelper.GetUserId(authState.User) == album?.UserId;
-        if (canEdit && album is not null)
+        try
         {
-            var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
-            await Catalog.EnsureShareLinkAsync(album);
-            if (shareLinkCreated)
-            {
-                PhotoItTelemetry.RecordShareCreated();
-                Logger.LogInformation("Album share link created. AlbumId: {AlbumId}", album.Id);
-            }
+            album = await Catalog.GetAsync(Id);
+            if (album is null)
+                return;
 
-            shareUrl = $"{Navigation.BaseUri.TrimEnd('/')}/sharedalbum/{album.ShareSlug}/{album.ShareSeed}";
+            var layout = await Catalog.GetLayoutAsync(Id);
+            hasLayout = layout is not null;
+            coverPhotoId = layout?.CoverPhotoId;
+
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            canEdit = CurrentUserHelper.GetUserId(authState.User) == album.UserId;
+            if (canEdit)
+            {
+                var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
+                await Catalog.EnsureShareLinkAsync(album);
+                if (shareLinkCreated)
+                {
+                    PhotoItTelemetry.RecordShareCreated();
+                    Logger.LogInformation("Album share link created. AlbumId: {AlbumId}", album.Id);
+                }
+
+                shareUrl = $"{Navigation.BaseUri.TrimEnd('/')}/sharedalbum/{album.ShareSlug}/{album.ShareSeed}";
+            }
+        }
+        finally
+        {
+            isLoading = false;
         }
     }
 

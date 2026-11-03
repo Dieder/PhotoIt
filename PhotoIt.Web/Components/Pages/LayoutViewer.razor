@@ -11,7 +11,14 @@
 
 <PageTitle>@(albumLayout?.Title ?? album?.Name ?? "Album")</PageTitle>
 
-@if (album is null)
+@if (isLoading)
+{
+    <div class="d-flex justify-content-center align-items-center py-5" role="status" aria-live="polite">
+        <span class="spinner-border text-primary" aria-hidden="true"></span>
+        <span class="visually-hidden">Loading album...</span>
+    </div>
+}
+else if (album is null)
 {
     <div class="alert alert-warning">Album not found.</div>
     <a href="albums">Back to albums</a>
@@ -446,6 +453,7 @@ else
     public bool SharedLink { get; set; }
 
     private Album? album;
+    private bool isLoading = true;
     private ViewableAlbumLayout? albumLayout;
     private Dictionary<string, AlbumPhoto> photoLookup = new(StringComparer.OrdinalIgnoreCase);
     private List<AlbumPhoto> photos = [];
@@ -467,23 +475,30 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        album = await Catalog.GetAsync(Id);
-        if (album is null)
-            return;
+        try
+        {
+            album = await Catalog.GetAsync(Id);
+            if (album is null)
+                return;
 
-        albumLayout = await Catalog.GetLayoutAsync(Id);
+            albumLayout = await Catalog.GetLayoutAsync(Id);
 
-        photos = (await Catalog.ListPhotosAsync(Id)).ToList();
-        photoLookup = photos.ToDictionary(photo => photo.Id, StringComparer.OrdinalIgnoreCase);
-        album.Chapters ??= [];
-        foreach (var chapter in album.Chapters)
-            chapter.PhotoIds ??= [];
-        BuildChapters();
-        totalPages = 2 + (albumLayout?.Pages.Count(page => string.IsNullOrWhiteSpace(page.ChapterId)) ?? 0);
-        UpdateCurrentContentPage();
+            photos = (await Catalog.ListPhotosAsync(Id)).ToList();
+            photoLookup = photos.ToDictionary(photo => photo.Id, StringComparer.OrdinalIgnoreCase);
+            album.Chapters ??= [];
+            foreach (var chapter in album.Chapters)
+                chapter.PhotoIds ??= [];
+            BuildChapters();
+            totalPages = 2 + (albumLayout?.Pages.Count(page => string.IsNullOrWhiteSpace(page.ChapterId)) ?? 0);
+            UpdateCurrentContentPage();
 
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        canEdit = CurrentUserHelper.GetUserId(authState.User) == album.UserId;
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            canEdit = CurrentUserHelper.GetUserId(authState.User) == album.UserId;
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
