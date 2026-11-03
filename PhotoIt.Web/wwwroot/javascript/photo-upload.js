@@ -1,8 +1,12 @@
 (() => {
     const uploadInputSelector = "[data-photo-upload-input]";
     const chapterTabSelector = "[data-photo-upload-chapter-tab]";
+    const dropzoneSelector = "[data-file-dropzone]";
+    let isUploading = false;
 
     function setUploading(uploading) {
+        isUploading = uploading;
+
         document.querySelectorAll(uploadInputSelector).forEach(input => {
             input.disabled = uploading;
             input.dataset.photoUploadLocked = uploading ? "true" : "false";
@@ -10,6 +14,11 @@
 
         document.querySelectorAll(chapterTabSelector).forEach(tab => {
             tab.disabled = uploading;
+        });
+
+        document.querySelectorAll(dropzoneSelector).forEach(dropzone => {
+            dropzone.classList.toggle("photo-upload-disabled", uploading);
+            dropzone.setAttribute("aria-disabled", uploading ? "true" : "false");
         });
     }
 
@@ -51,6 +60,11 @@
         }
 
         event.preventDefault();
+        if (isUploading) {
+            dropzone.classList.remove("photo-upload-dragover");
+            return;
+        }
+
         dropzone.classList.add("photo-upload-dragover");
     });
 
@@ -69,6 +83,10 @@
 
         event.preventDefault();
         dropzone.classList.remove("photo-upload-dragover");
+        if (isUploading) {
+            return;
+        }
+
         const input = dropzone.querySelector(uploadInputSelector);
         if (!input || input.disabled || !event.dataTransfer?.files?.length) {
             return;

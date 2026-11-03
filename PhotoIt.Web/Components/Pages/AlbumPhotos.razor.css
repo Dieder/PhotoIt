@@ -21,6 +21,15 @@
     background: #e7f1ff;
 }
 
+.photo-upload-dropzone.photo-upload-disabled {
+    background: #f1f3f5;
+    cursor: wait;
+}
+
+.photo-upload-dropzone.photo-upload-disabled .photo-upload-prompt {
+    opacity: .65;
+}
+
 .photo-upload-input {
     position: absolute;
     inset: 0;

@@ -84,22 +84,29 @@
     transition: background-color 0.3s ease;
 }
 
-.album-photo-search-link {
-    position: relative;
+.album-cover-actions {
     width: min(100%, 24rem);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 0 0 1rem;
+}
+
+.album-cover-preview {
+    position: relative;
+    width: 100%;
     min-height: 12rem;
-    margin: 0 0 1.5rem;
+    flex: 1 1 auto;
     overflow: hidden;
     display: grid;
     place-items: center;
     border-radius: .8rem;
     color: #fff;
     background: linear-gradient(135deg, #637b85, #26343b 70%, #b87d55);
-    text-decoration: none;
     box-shadow: 0 .4rem 1.2rem rgb(0 0 0 / 15%);
 }
 
-.album-photo-search-link > img {
+.album-cover-preview > img {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -108,15 +115,11 @@
     transition: transform .2s ease;
 }
 
-.album-photo-search-link::after {
+.album-cover-preview::after {
     position: absolute;
     inset: 0;
     content: "";
     background: linear-gradient(180deg, rgb(0 0 0 / 4%) 25%, rgb(0 0 0 / 55%) 100%);
-}
-
-.album-photo-search-link:hover > img {
-    transform: scale(1.04);
 }
 
 .album-photo-search-no-cover {
@@ -124,10 +127,7 @@
 }
 
 .album-photo-search-label {
-    position: absolute;
-    z-index: 1;
-    right: .85rem;
-    bottom: .85rem;
+    flex: 0 0 auto;
     padding: .55rem .85rem;
     display: inline-flex;
     align-items: center;
@@ -137,6 +137,53 @@
     color: #fff;
     background: rgb(23 33 43 / 78%);
     font-weight: 600;
+}
+
+.album-photo-search-label:hover {
+    color: #fff;
+    background: #17212b;
+}
+
+.album-cover-picker {
+    width: min(100%, 24rem);
+}
+
+.album-cover-picker summary {
+    cursor: pointer;
+    margin-bottom: .75rem;
+}
+
+.album-cover-picker-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+    gap: .5rem;
+    margin-bottom: .5rem;
+}
+
+.album-cover-picker-option {
+    padding: 0;
+    overflow: hidden;
+    aspect-ratio: 1;
+    border: 2px solid transparent;
+    border-radius: .45rem;
+    background: #e9ecef;
+    cursor: pointer;
+}
+
+.album-cover-picker-option.selected {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 .15rem rgb(13 110 253 / 18%);
+}
+
+.album-cover-picker-option:disabled {
+    cursor: wait;
+    opacity: .65;
+}
+
+.album-cover-picker-option img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
 .theme-img {

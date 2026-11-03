@@ -175,13 +175,13 @@ else
                     </div>
                 </div>
 
-                <span class="badge rounded-pill @(hasLayout
+                <span class="badge rounded-pill @(hasLayout || album.Chapters.Count > 0
                                     ? "text-bg-success"
                                     : "text-bg-secondary") flex-shrink-0">
-                    <i class="bi @(hasLayout
+                    <i class="bi @(hasLayout || album.Chapters.Count > 0
                                         ? "bi-check-circle"
                                         : "bi-layout-text-window-reverse") me-1"></i>
-                    @(hasLayout ? "Layout ready" : "No layout")
+                    @(hasLayout ? "Layout ready" : album.Chapters.Count > 0 ? "Chapters ready" : "No layout")
                 </span>
             </div>
 
@@ -193,7 +193,8 @@ else
                 </p>
             }
 
-            <a class="album-photo-search-link" href="/albums/@album.Id/photos" aria-label="Search photos in @album.Name">
+            <div class="album-cover-actions">
+                <div class="album-cover-preview">
                 @if (!string.IsNullOrWhiteSpace(coverPhotoId))
                 {
                     <img src="/albums/@album.Id/photos/@coverPhotoId/thumbnail" alt="" />
@@ -202,11 +203,49 @@ else
                 {
                     <span class="album-photo-search-no-cover">No cover photo</span>
                 }
-                <span class="album-photo-search-label">
+                </div>
+                <a class="album-photo-search-label" href="/albums/@album.Id/photos" aria-label="Search photos in @album.Name">
                     <i class="bi bi-search" aria-hidden="true"></i>
                     Search photos
-                </span>
-            </a>
+                </a>
+            </div>
+            @if (canEdit)
+            {
+                <details class="album-cover-picker mb-4">
+                    <summary>Choose cover photo</summary>
+                    @if (coverPhotos.Count > 0)
+                    {
+                        <div class="album-cover-picker-options" aria-label="Cover photo options">
+                            @foreach (var photo in coverPhotos)
+                            {
+                                <button type="button"
+                                        class="album-cover-picker-option @(coverPhotoId == photo.Id ? "selected" : "")"
+                                        title="@photo.OriginalFileName"
+                                        aria-label="Set @photo.OriginalFileName as the cover photo"
+                                        aria-pressed="@(coverPhotoId == photo.Id)"
+                                        disabled="@isSavingCover"
+                                        @onclick="() => SetCoverPhotoAsync(photo.Id)">
+                                    <img src="/albums/@album.Id/photos/@photo.Id/thumbnail"
+                                         alt=""
+                                         loading="lazy" />
+                                </button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="small text-muted mb-0">Upload photos before selecting a cover.</p>
+                    }
+                    @if (isSavingCover)
+                    {
+                        <span class="small text-muted">Saving cover photo...</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(coverPhotoError))
+                    {
+                        <div class="small text-danger" role="alert">@coverPhotoError</div>
+                    }
+                </details>
+            }
 
             <hr class="album-divider" />
 
@@ -292,6 +331,9 @@ else
     private bool isLoading = true;
     private bool hasLayout;
     private string? coverPhotoId;
+    private IReadOnlyList<AlbumPhoto> coverPhotos = [];
+    private bool isSavingCover;
+    private string? coverPhotoError;
     private bool canEdit;
     private string? shareUrl;
     private bool shareCopied;
@@ -317,6 +359,9 @@ else
             canEdit = CurrentUserHelper.GetUserId(authState.User) == album.UserId;
             if (canEdit)
             {
+                coverPhotos = (await Catalog.ListPhotosAsync(Id))
+                    .Where(photo => !PhotoType.IsVideo(photo))
+                    .ToList();
                 var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
                 await Catalog.EnsureShareLinkAsync(album);
                 if (shareLinkCreated)
@@ -331,6 +376,37 @@ else
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private async Task SetCoverPhotoAsync(string photoId)
+    {
+        if (album is null || !canEdit || coverPhotos.All(photo => photo.Id != photoId))
+            return;
+
+        isSavingCover = true;
+        coverPhotoError = null;
+        try
+        {
+            var layout = await Catalog.GetLayoutAsync(album.Id) ?? new ViewableAlbumLayout
+            {
+                AlbumId = album.Id,
+                Title = album.Name,
+                Subtitle = album.FullDescription,
+            };
+            layout.CoverPhotoId = photoId;
+            await Catalog.SaveLayoutAsync(layout);
+            coverPhotoId = photoId;
+            hasLayout = true;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Could not set album cover photo. AlbumId: {AlbumId}, PhotoId: {PhotoId}", album.Id, photoId);
+            coverPhotoError = "Could not save the cover photo.";
+        }
+        finally
+        {
+            isSavingCover = false;
         }
     }
 

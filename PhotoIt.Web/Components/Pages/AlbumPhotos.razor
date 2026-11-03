@@ -77,7 +77,7 @@ else
                            disabled="@isUploading" />
                 <div class="photo-upload-prompt" aria-hidden="true">
                     <strong>Drop photos here or click to choose files</strong>
-                    <span>Images and MP4 videos are supported; up to 1,000 files per upload.</span>
+                    <span>Images and MP4 videos are supported; up to 50 files per batch.</span>
                 </div>
             </div>
             <div class="form-text">Images and MP4 videos are stored in Azure Blob Storage under @album.ImageFolderName. Videos can be placed in Page L slots and play automatically in the album viewer.</div>
@@ -89,6 +89,12 @@ else
                         <span>@uploadStatus</span>
                         <span>@uploadProgress / @uploadTotal</span>
                     </div>
+                    @if (isUploading && !string.IsNullOrWhiteSpace(currentUploadFileName))
+                    {
+                        <div class="small text-truncate mb-2" title="@currentUploadFileName">
+                            Processing: @currentUploadFileName
+                        </div>
+                    }
                     <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@UploadPercent">
                         <div class="progress-bar" style="width: @UploadPercent%"></div>
                     </div>
@@ -283,17 +289,16 @@ else
             </div>
         </section>
     }
-        }
-        else
-        {
-            <div class="alert alert-warning">Only the album owner can manage photos and chapters.</div>
-            <a href="/albums/@album.Id/photos">Search album photos</a>
-        }
+    }
+    else
+    {
+        <div class="alert alert-warning">Only the album owner can manage photos and chapters.</div>
+        <a href="/albums/@album.Id/photos">Search album photos</a>
     }
 }
 
 @code {
-    private const int MaxUploadFileCount = 1000;
+    private const int MaxUploadFileCount = 50;
 
     [Parameter]
     public string Id { get; set; } = string.Empty;
@@ -321,6 +326,7 @@ else
     private int uploadProgress;
     private int uploadTotal;
     private string uploadStatus = "Ready";
+    private string? currentUploadFileName;
     private readonly CancellationTokenSource pageCts = new();
     private IEnumerable<AlbumPhoto> ChapterPickerPhotos
     {
@@ -457,7 +463,7 @@ else
             uploadTotal = args.FileCount;
             uploadProgress = 0;
             uploadStatus = "Too many files";
-            errorMessage = $"Select no more than {MaxUploadFileCount:N0} files per upload.";
+            errorMessage = $"Select no more than {MaxUploadFileCount} files per batch.";
             return;
         }
 
@@ -477,6 +483,10 @@ else
             var files = args.GetMultipleFiles(MaxUploadFileCount);
             foreach (var file in files)
             {
+                currentUploadFileName = file.Name;
+                uploadStatus = $"Processing {file.Name}";
+                await InvokeAsync(StateHasChanged);
+
                 uploadActivity = PhotoItTelemetry.ActivitySource.StartActivity("photo.upload");
                 uploadActivity?.SetTag("media.type", Path.GetExtension(file.Name).Equals(".mp4", StringComparison.OrdinalIgnoreCase) ? "video" : "image");
                 var extension = Path.GetExtension(file.Name);
@@ -563,6 +573,7 @@ else
                     IndexQueue.Enqueue(new AlbumPhotoIndexRequest(album.Id, photo.Id));
                 uploadProgress++;
                 uploadStatus = $"Uploading {uploadProgress} of {uploadTotal}...";
+                currentUploadFileName = null;
                 await InvokeAsync(StateHasChanged);
             }
 
@@ -582,6 +593,7 @@ else
         finally
         {
             isUploading = false;
+            currentUploadFileName = null;
             if (uploadProgress >= uploadTotal)
                 uploadProgress = uploadTotal;
             try
