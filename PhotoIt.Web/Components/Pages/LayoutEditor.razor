@@ -869,6 +869,14 @@ else
             return Task.CompletedTask;
         }
 
+        if (!editingLegacyPages
+            && selectedChapter?.PhotoIds.Contains(draggedPhotoId, StringComparer.OrdinalIgnoreCase) != true)
+        {
+            errorMessage = "This photo is not selected for the current chapter.";
+            ClearDragState();
+            return Task.CompletedTask;
+        }
+
         if (draggedFromTitlePage)
         {
             albumLayout!.CoverPhotoId = null;
@@ -885,7 +893,15 @@ else
         }
 
         if (draggedFromSlotCol is null)
-        {                      
+        {
+            if (!editingLegacyPages)
+            {
+                AlbumChapterPageRules.RemovePhotoFromIncompatibleChapterPages(
+                    albumLayout!.Pages,
+                    album!.Chapters,
+                    draggedPhotoId);
+            }
+
             targetSlot.PhotoId = draggedPhotoId;            
             ResetSlotComposition(targetSlot);
         }

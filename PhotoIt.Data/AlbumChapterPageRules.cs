@@ -2,6 +2,30 @@ namespace PhotoIt.Data;
 
 public static class AlbumChapterPageRules
 {
+    public static void RemovePhotoFromIncompatibleChapterPages(
+        IEnumerable<LayoutPage> pages,
+        IEnumerable<AlbumChapter> chapters,
+        string photoId)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        ArgumentNullException.ThrowIfNull(chapters);
+        ArgumentException.ThrowIfNullOrWhiteSpace(photoId);
+
+        var chapterLookup = chapters.ToDictionary(chapter => chapter.Id, StringComparer.OrdinalIgnoreCase);
+        foreach (var page in pages.Where(page => !string.IsNullOrWhiteSpace(page.ChapterId)))
+        {
+            if (!chapterLookup.TryGetValue(page.ChapterId!, out var chapter)
+                || (chapter.PhotoIds ?? []).Contains(photoId, StringComparer.OrdinalIgnoreCase))
+                continue;
+
+            foreach (var slot in page.Photos ?? [])
+            {
+                if (string.Equals(slot.PhotoId, photoId, StringComparison.OrdinalIgnoreCase))
+                    slot.PhotoId = null;
+            }
+        }
+    }
+
     public static void Validate(
         Album album,
         IEnumerable<LayoutPage> pages,

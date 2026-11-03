@@ -101,4 +101,36 @@ public sealed class AlbumChapterPageRulesTests
 
         Assert.Contains("assigned to a chapter", exception.Message);
     }
+
+    [Fact]
+    public void RemovePhotoFromIncompatibleChapterPages_clears_only_pages_whose_chapter_does_not_contain_photo()
+    {
+        var firstChapter = new AlbumChapter { Id = "chapter-1", PhotoIds = ["photo-1"] };
+        var secondChapter = new AlbumChapter { Id = "chapter-2", PhotoIds = ["photo-2"] };
+        var firstPage = new LayoutPage
+        {
+            Number = 1,
+            ChapterId = firstChapter.Id,
+            Photos = [new PhotoSlot { PhotoId = "photo-1" }],
+        };
+        var secondPage = new LayoutPage
+        {
+            Number = 3,
+            ChapterId = secondChapter.Id,
+            Photos =
+            [
+                new PhotoSlot { Col = 1, Row = 1, PhotoId = "photo-1" },
+                new PhotoSlot { Col = 2, Row = 1, PhotoId = "photo-2" },
+            ],
+        };
+
+        AlbumChapterPageRules.RemovePhotoFromIncompatibleChapterPages(
+            [firstPage, secondPage],
+            [firstChapter, secondChapter],
+            "photo-1");
+
+        Assert.Equal("photo-1", Assert.Single(firstPage.Photos).PhotoId);
+        Assert.Null(secondPage.Photos[0].PhotoId);
+        Assert.Equal("photo-2", secondPage.Photos[1].PhotoId);
+    }
 }
