@@ -8,10 +8,8 @@
 @using Microsoft.AspNetCore.Components.Forms
 @inject AlbumCatalog Catalog
 @inject AzurePhotoStorage Storage
-@inject PhotoThumbnailService Thumbnails
 @inject PhotoVisionOrchestrator VisionOrchestrator
 @inject Phi3VisionModel VisionModel
-@inject PhotoIndexQueue IndexQueue
 @inject ILogger<AlbumPhotos> Logger
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
@@ -67,17 +65,18 @@ else
         <div class="border rounded p-4 mb-4 bg-light">
             <label class="form-label" for="photo-upload">Upload photos and videos</label>
             <div class="photo-upload-dropzone" data-file-dropzone>
-                <InputFile id="photo-upload"
-                           class="photo-upload-input"
-                           data-photo-upload-input
-                           data-max-files="@MaxUploadFileCount"
-                           OnChange="UploadAsync"
-                           multiple
-                           accept="image/*,.jpg,.rw2,.mp4"
-                           disabled="@isUploading" />
+                <input @ref="uploadInput"
+                       id="photo-upload"
+                       type="file"
+                       class="photo-upload-input"
+                       data-photo-upload-input
+                       data-max-files="@MaxUploadFileCount"
+                       multiple
+                       accept="image/*,.jpg,.rw2,.mp4"
+                       disabled="@isUploading" />
                 <div class="photo-upload-prompt" aria-hidden="true">
                     <strong>Drop photos here or click to choose files</strong>
-                    <span>Images and MP4 videos are supported; up to 50 files per batch.</span>
+                    <span>Images and MP4 videos are supported; up to @MaxUploadFileCount files per batch.</span>
                 </div>
             </div>
             <div class="form-text">Images and MP4 videos are stored in Azure Blob Storage under @album.ImageFolderName. Videos can be placed in Page L slots and play automatically in the album viewer.</div>
@@ -298,7 +297,7 @@ else
 }
 
 @code {
-    private const int MaxUploadFileCount = 50;
+    private const int MaxUploadFileCount = 1000;
 
     [Parameter]
     public string Id { get; set; } = string.Empty;
@@ -327,6 +326,9 @@ else
     private int uploadTotal;
     private string uploadStatus = "Ready";
     private string? currentUploadFileName;
+    private ElementReference uploadInput;
+    private DotNetObjectReference<AlbumPhotos>? uploadCallback;
+    private bool uploadHandlerInitialized;
     private readonly CancellationTokenSource pageCts = new();
     private IEnumerable<AlbumPhoto> ChapterPickerPhotos
     {
@@ -398,6 +400,16 @@ else
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (uploadHandlerInitialized || isLoading || !canEdit || album is null)
+            return;
+
+        uploadCallback = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("photoUpload.initialize", uploadInput, album.Id, uploadCallback);
+        uploadHandlerInitialized = true;
+    }
+
     private async Task RefreshExifMetadataAsync()
     {
         if (exifRefreshStarted || album is null)
@@ -451,160 +463,62 @@ else
         }
     }
 
-    private async Task UploadAsync(InputFileChangeEventArgs args)
+    [JSInvokable]
+    public Task UploadStarted(int total)
     {
-        if (album is null)
-            return;
-        if (args.FileCount == 0)
-            return;
+        isUploading = true;
+        uploadTotal = total;
+        uploadProgress = 0;
+        currentUploadFileName = null;
+        uploadStatus = "Preparing direct upload...";
+        errorMessage = null;
+        return InvokeAsync(StateHasChanged);
+    }
 
-        if (args.FileCount > MaxUploadFileCount)
-        {
-            uploadTotal = args.FileCount;
-            uploadProgress = 0;
-            uploadStatus = "Too many files";
-            errorMessage = $"Select no more than {MaxUploadFileCount} files per batch.";
-            return;
-        }
+    [JSInvokable]
+    public Task UploadRejected(string message)
+    {
+        uploadTotal = 0;
+        uploadProgress = 0;
+        uploadStatus = "Upload not started";
+        errorMessage = message;
+        return InvokeAsync(StateHasChanged);
+    }
 
-        if (!isUploading)
-        {
-            isUploading = true;
-            uploadTotal = args.FileCount;
-            uploadProgress = 0;
-            uploadStatus = "Uploading...";
-            errorMessage = null;
-        }
+    [JSInvokable]
+    public Task UploadProgress(int completed, int total, string activeFileNames)
+    {
+        uploadProgress = completed;
+        uploadTotal = total;
+        currentUploadFileName = activeFileNames;
+        uploadStatus = "Uploading directly to storage...";
+        return InvokeAsync(StateHasChanged);
+    }
 
-        System.Diagnostics.Activity? uploadActivity = null;
+    [JSInvokable]
+    public async Task UploadFinished(int uploadedCount, string[] failures)
+    {
+        isUploading = false;
+        currentUploadFileName = null;
+        uploadProgress = Math.Min(uploadedCount, uploadTotal);
+        uploadStatus = failures.Length == 0 ? "Completed" : $"Completed with {failures.Length} failed file(s)";
+        errorMessage = failures.Length == 0
+            ? null
+            : string.Join(Environment.NewLine, failures.Take(3))
+                + (failures.Length > 3 ? $"{Environment.NewLine}And {failures.Length - 3} more." : string.Empty);
+        await LoadPhotosAsync();
+        await InvokeAsync(StateHasChanged);
+    }
 
-        try
-        {
-            var files = args.GetMultipleFiles(MaxUploadFileCount);
-            foreach (var file in files)
-            {
-                currentUploadFileName = file.Name;
-                uploadStatus = $"Processing {file.Name}";
-                await InvokeAsync(StateHasChanged);
-
-                uploadActivity = PhotoItTelemetry.ActivitySource.StartActivity("photo.upload");
-                uploadActivity?.SetTag("media.type", Path.GetExtension(file.Name).Equals(".mp4", StringComparison.OrdinalIgnoreCase) ? "video" : "image");
-                var extension = Path.GetExtension(file.Name);
-                var isVideo = string.Equals(extension, ".mp4", StringComparison.OrdinalIgnoreCase);
-                if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) && !isVideo)
-                    throw new InvalidDataException("Only MP4 videos are supported.");
-
-                var blobName = $"{album.ImageFolderName}/{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
-                var contentType = isVideo ? "video/mp4" : file.ContentType;
-                var metadata = new AlbumPhotoMetadata();
-                byte[]? thumbnailBytes = null;
-                var thumbnailUnavailable = false;
-                if (isVideo)
-                {
-                    await using var content = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
-                    await Storage.UploadAsync(blobName, content, contentType, CancellationToken.None);
-                }
-                else
-                {
-                    await using var content = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
-                    using var memory = new MemoryStream();
-                    await content.CopyToAsync(memory);
-                    var bytes = memory.ToArray();
-                    metadata = PhotoMetadataReader.Extract(bytes);
-                    try
-                    {
-                        thumbnailBytes = Thumbnails.Create(bytes);
-                    }
-                    catch (ImageMagick.MagickException exception)
-                    {
-                        thumbnailUnavailable = true;
-                        Logger.LogWarning(exception, "Could not create photo thumbnail during upload. AlbumId: {AlbumId}", album.Id);
-                    }
-                    await Storage.UploadAsync(blobName, new MemoryStream(bytes), contentType, CancellationToken.None);
-                }
-
-                var photo = new AlbumPhoto
-                {
-                    AlbumId = album.Id,
-                    BlobName = blobName,
-                    ThumbnailUnavailable = thumbnailUnavailable,
-                    OriginalFileName = file.Name,
-                    ContentType = contentType,
-                    Length = file.Size,
-                    PixelWidth = metadata.PixelWidth,
-                    PixelHeight = metadata.PixelHeight,
-                    UploadedUtc = DateTime.UtcNow,
-                    DateTakenUtc = metadata.DateTakenUtc,
-                    Latitude = metadata.Latitude,
-                    Longitude = metadata.Longitude,
-                    CameraMake = metadata.CameraMake,
-                    CameraModel = metadata.CameraModel,
-                    LensModel = metadata.LensModel,
-                    FocalLength = metadata.FocalLength,
-                    FocalLength35Mm = metadata.FocalLength35Mm,
-                    SubjectDistance = metadata.SubjectDistance,
-                    Flash = metadata.Flash,
-                    Dimensions = metadata.Dimensions,
-                    ExposureTime = metadata.ExposureTime,
-                    FNumber = metadata.FNumber,
-                    IsoSpeed = metadata.IsoSpeed,
-                    ExposureProgram = metadata.ExposureProgram,
-                    WhiteBalance = metadata.WhiteBalance,
-                };
-
-                if (thumbnailBytes is not null)
-                {
-                    var thumbnailBlobName = $"{album.ImageFolderName}/thumbnails/{photo.Id}.jpg";
-                    await Storage.UploadAsync(
-                        thumbnailBlobName,
-                        new MemoryStream(thumbnailBytes),
-                        "image/jpeg",
-                        CancellationToken.None,
-                        overwrite: true);
-                    photo.ThumbnailBlobName = thumbnailBlobName;
-                }
-
-                await Catalog.AddPhotoAsync(photo);
-                PhotoItTelemetry.RecordPhotoUploaded();
-                Logger.LogInformation("Media uploaded. AlbumId: {AlbumId}, MediaId: {MediaId}", album.Id, photo.Id);
-                uploadActivity?.Dispose();
-                uploadActivity = null;
-                if (!isVideo)
-                    IndexQueue.Enqueue(new AlbumPhotoIndexRequest(album.Id, photo.Id));
-                uploadProgress++;
-                uploadStatus = $"Uploading {uploadProgress} of {uploadTotal}...";
-                currentUploadFileName = null;
-                await InvokeAsync(StateHasChanged);
-            }
-
-            await Catalog.TouchAsync(album.Id);
-            await LoadPhotosAsync();
-            uploadStatus = "Completed";
-        }
-        catch (Exception exception)
-        {
-            uploadActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Media upload failed");
-            uploadActivity?.Dispose();
-            PhotoItTelemetry.RecordPhotoUploadFailure();
-            Logger.LogError(exception, "Media upload failed. AlbumId: {AlbumId}", album.Id);
-            errorMessage = $"Media upload failed: {exception.Message}";
-            uploadStatus = "Failed";
-        }
-        finally
-        {
-            isUploading = false;
-            currentUploadFileName = null;
-            if (uploadProgress >= uploadTotal)
-                uploadProgress = uploadTotal;
-            try
-            {
-                await JS.InvokeVoidAsync("photoUpload.setUploading", false);
-            }
-            catch (JSDisconnectedException)
-            {
-            }
-            await InvokeAsync(StateHasChanged);
-        }
+    [JSInvokable]
+    public Task UploadFailed(string message)
+    {
+        PhotoItTelemetry.RecordPhotoUploadFailure();
+        isUploading = false;
+        currentUploadFileName = null;
+        uploadStatus = "Failed";
+        errorMessage = message;
+        return InvokeAsync(StateHasChanged);
     }
 
     private void SetActiveTab(string tab)
@@ -923,6 +837,7 @@ else
     {
         pageCts.Cancel();
         pageCts.Dispose();
+        uploadCallback?.Dispose();
         return ValueTask.CompletedTask;
     }
 }

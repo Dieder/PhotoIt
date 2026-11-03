@@ -160,7 +160,7 @@ else
         }
         else if (activeChapter is not null)
         {
-            <section class="chapter-view">
+            <section @key="activeChapter.Id" class="chapter-view">
                 <button type="button" class="magazine-text-button" @onclick="BackToCover">← Back to cover</button>
                 <div class="chapter-view-heading">
                     @if (!string.IsNullOrWhiteSpace(activeChapter.DateLabel))

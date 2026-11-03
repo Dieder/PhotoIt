@@ -130,6 +130,8 @@ app.MapGet("/albums/{albumId}/photos/{photoId}/content", async (
     return Results.Stream(download.Content, download.ContentType, enableRangeProcessing: true);
 });
 
+app.MapPhotoUploadEndpoints();
+
 app.MapGet("/albums/{albumId}/photos/{photoId}/thumbnail", async (
     string albumId,
     string photoId,
