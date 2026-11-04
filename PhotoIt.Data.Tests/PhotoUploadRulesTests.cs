@@ -32,7 +32,8 @@ public sealed class PhotoUploadRulesTests
     [InlineData(0, false)]
     [InlineData(1, true)]
     [InlineData(50, true)]
-    [InlineData(51, false)]
+    [InlineData(1000, true)]
+    [InlineData(1001, false)]
     public void IsValidBatchFileCount_EnforcesBatchLimit(int count, bool expected)
     {
         Assert.Equal(expected, PhotoUploadRules.IsValidBatchFileCount(count));

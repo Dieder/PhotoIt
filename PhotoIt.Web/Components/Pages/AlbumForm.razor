@@ -77,19 +77,61 @@
 
                 <div class="row g-3 mt-2">
                     <div class="col-12 col-md-6">
-                        <label class="form-label" for="travel-start">Start date</label>
-                        <InputDate id="travel-start" class="form-control album-input" @bind-Value="Model.TravelStartDate" />
-                    </div>
-                    <div class="col-12 col-md-6">
-                        <label class="form-label" for="travel-end">End date</label>
-                        <InputDate id="travel-end" class="form-control album-input" @bind-Value="Model.TravelEndDate" />
+                        <label class="form-label" for="album-type">Album type</label>
+                        <InputSelect id="album-type" class="form-select album-input" @bind-Value="Model.AlbumType">
+                            @foreach (var type in AlbumTypeCatalog.All)
+                            {
+                                <option value="@type.Id">@type.Icon @type.Name</option>
+                            }
+                        </InputSelect>
                     </div>
                     <div class="col-12">
-                        <div class="form-check">
-                            <InputCheckbox id="show-route" class="form-check-input" @bind-Value="Model.ShowRouteOnCover" />
-                            <label class="form-check-label" for="show-route">Show route and distance on the album cover</label>
+                        <p class="form-text mb-0">@SelectedAlbumType.Description @SelectedAlbumType.PresentationHint</p>
+                    </div>
+                    @foreach (var field in SelectedAlbumType.AlbumFields)
+                    {
+                        <div class="col-12 col-md-6" @key="field.Id">
+                            <label class="form-label" for="@($"album-metadata-{field.Id}")">@field.Label</label>
+                            <input id="@($"album-metadata-{field.Id}")"
+                                   class="form-control album-input"
+                                   type="@GetInputType(field.ValueType)"
+                                   step="@(field.ValueType == AlbumMetadataValueType.Integer ? "1" : null)"
+                                   value="@GetMetadataValue(field.Id)"
+                                   @onchange="args => SetMetadataValue(field.Id, args.Value?.ToString())" />
+                            @if (!string.IsNullOrWhiteSpace(field.Unit))
+                            {
+                                <div class="form-text">@field.Unit</div>
+                            }
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(metadataValidationMessage))
+                    {
+                        <div class="col-12">
+                            <div class="alert alert-danger mb-0" role="alert">@metadataValidationMessage</div>
+                        </div>
+                    }
+                </div>
+
+                @if (Model.AlbumType == "travel")
+                {
+                    <div class="row g-3 mt-2">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="travel-start">Start date</label>
+                            <InputDate id="travel-start" class="form-control album-input" @bind-Value="Model.TravelStartDate" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="travel-end">End date</label>
+                            <InputDate id="travel-end" class="form-control album-input" @bind-Value="Model.TravelEndDate" />
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <InputCheckbox id="show-route" class="form-check-input" @bind-Value="Model.ShowRouteOnCover" />
+                                <label class="form-check-label" for="show-route">Show route and distance on the album cover</label>
+                            </div>
                         </div>
                     </div>
+                }
+                <div class="row g-3 mt-2">
                     <div class="col-12 col-md-6">
                         <label class="form-label" for="default-chapter-mode">Default mode for new chapters</label>
                         <InputSelect id="default-chapter-mode" class="form-select album-input" @bind-Value="Model.DefaultChapterMode">
@@ -170,7 +212,9 @@
     public bool ActionsAtTop { get; set; }
 
     private string? errorMessage;
+    private string? metadataValidationMessage;
     private AuthenticationState authenticationState;
+    private AlbumTypeDefinition SelectedAlbumType => AlbumTypeCatalog.Get(Model.AlbumType);
 
      private readonly EasyMdeOptions Options = new()
     {
@@ -203,6 +247,12 @@
 
     private async Task SaveAsync()
     {
+        Model.AlbumType = SelectedAlbumType.Id;
+        metadataValidationMessage = AlbumTypeCatalog.ValidateValues(
+            SelectedAlbumType.AlbumFields, Model.Metadata, SelectedAlbumType.Id);
+        if (metadataValidationMessage is not null)
+            return;
+
         using var activity = PhotoItTelemetry.ActivitySource.StartActivity("album.save");
         activity?.SetTag("album.operation", IsNew ? "create" : "update");
         if (string.IsNullOrEmpty(Model.UserId))
@@ -260,6 +310,14 @@
 
             album.Name = Model.Name;
             album.FullDescription = Model.FullDescription;
+            album.AlbumType = Model.AlbumType;
+            album.Metadata = Model.Metadata.Select(item => new AlbumMetadataValue
+            {
+                Id = item.Id,
+                FunctionalName = item.FunctionalName,
+                FieldId = item.FieldId,
+                Value = item.Value
+            }).ToList();
             album.Intro = Model.Intro;
             album.ImageFolderName = Model.ImageFolderName;
             album.TravelStartDate = Model.TravelStartDate;
@@ -294,4 +352,21 @@
 
         Navigation.NavigateTo($"/albums/{Model.Id}");
     }
+
+    private string GetMetadataValue(string fieldId) =>
+        AlbumTypeCatalog.GetValue(Model.Metadata, SelectedAlbumType.Id, fieldId) ?? string.Empty;
+
+    private void SetMetadataValue(string fieldId, string? value)
+    {
+        Model.AlbumType = SelectedAlbumType.Id;
+        Model.Metadata = AlbumTypeCatalog.SetValue(Model.Metadata, Model.AlbumType, fieldId, value);
+    }
+
+    private static string GetInputType(AlbumMetadataValueType valueType) => valueType switch
+    {
+        AlbumMetadataValueType.Date => "date",
+        AlbumMetadataValueType.Integer => "number",
+        _ => "text",
+    };
+
 }

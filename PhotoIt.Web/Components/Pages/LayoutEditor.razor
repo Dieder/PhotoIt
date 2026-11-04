@@ -724,12 +724,15 @@ else
         var layout = albumLayout!;
         var chapterPages = ChapterPages;
         var nextNumber = chapterPages.Count == 0 ? 1 : chapterPages.Max(page => page.Number) + 1;
+        var templateId = AlbumTypeCatalog.GetDefaultPageTemplateId(album?.AlbumType);
+        var template = LayoutTemplates.Get(templateId)
+            ?? throw new InvalidOperationException($"No layout template found with ID '{templateId}'.");
         var page = new LayoutPage
         {
             Number = nextNumber,
             ChapterId = chapter.Id,
-            TemplateId = LayoutTemplateIds.OneBig,
-            Photos = LayoutTemplates.Get(LayoutTemplateIds.OneBig).Slots.ToList(),
+            TemplateId = templateId,
+            Photos = template.Slots.ToList(),
         };
         layout.Pages.Add(page);
         SelectPage(nextNumber);

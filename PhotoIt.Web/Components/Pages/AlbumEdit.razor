@@ -65,6 +65,14 @@ else
                 Name = album.Name,
                 ImageFolderName = album.ImageFolderName,
                 FullDescription = album.FullDescription,
+                AlbumType = AlbumTypeCatalog.Get(album.AlbumType).Id,
+                Metadata = (album.Metadata ?? []).Select(item => new AlbumMetadataValue
+                {
+                    Id = item.Id,
+                    FunctionalName = item.FunctionalName,
+                    FieldId = item.FieldId,
+                    Value = item.Value
+                }).ToList(),
                 TravelStartDate = album.TravelStartDate,
                 TravelEndDate = album.TravelEndDate,
                 ShowRouteOnCover = album.ShowRouteOnCover,

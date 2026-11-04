@@ -47,14 +47,19 @@ else
         {
             <div class="col">
                 <article class="card h-100 shadow-sm">
-                            @if (coverPhotoIds.TryGetValue(album.Id, out var coverPhotoId))
-                            {
-                                <img class="card-img-top" src="albums/@album.Id/photos/@coverPhotoId/content" alt="Cover for @album.Name" style="height: 220px; object-fit: cover;" />
-                            }
-                            else
-                            {
-                                <div class="d-flex align-items-center justify-content-center bg-light text-muted" style="height: 220px;">No cover photo</div>
-                            }
+                    @if (coverPhotoIds.TryGetValue(album.Id, out var coverPhotoId))
+                    {
+                        <div class="album-cover-frame">
+                            <img class="card-img-top @(IsPortraitCover(album.Id) ? "album-cover-portrait" : "")"
+                                 src="albums/@album.Id/photos/@coverPhotoId/content"
+                                 alt="Cover for @album.Name"
+                                 style="height: 220px; object-fit: @(IsPortraitCover(album.Id) ? "contain" : "cover");" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex align-items-center justify-content-center bg-light text-muted" style="height: 220px;">No cover photo</div>
+                    }
                     <div class="card-body">
                         <p class="text-muted small mb-2">@album.ImageFolderName</p>
                         <h2 class="h4 card-title">@album.Name</h2>
@@ -140,6 +145,7 @@ else
     private readonly Dictionary<string, string> shareUrls = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> coverPhotoIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<AlbumPhoto>> albumPhotos = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, AlbumPhoto> coverPhotos = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> coverPhotoErrors = new(StringComparer.OrdinalIgnoreCase);
     private string? copiedAlbumId;
     private string? savingCoverAlbumId;
@@ -156,7 +162,12 @@ else
         {
             var layout = await Catalog.GetLayoutAsync(album.Id);
             if (!string.IsNullOrWhiteSpace(layout?.CoverPhotoId))
+            {
                 coverPhotoIds[album.Id] = layout.CoverPhotoId;
+                var coverPhoto = await Catalog.GetPhotoAsync(album.Id, layout.CoverPhotoId);
+                if (coverPhoto is not null)
+                    coverPhotos[album.Id] = coverPhoto;
+            }
 
             if (isAuthenticated && currentUserId == album.UserId)
             {
@@ -180,6 +191,10 @@ else
         }
     }
 
+    private bool IsPortraitCover(string albumId) =>
+        coverPhotos.TryGetValue(albumId, out var coverPhoto)
+        && coverPhoto.PixelHeight.GetValueOrDefault() > coverPhoto.PixelWidth.GetValueOrDefault();
+
     private async Task SetCoverPhotoAsync(Album album, string photoId)
     {
         if (currentUserId != album.UserId ||
@@ -199,6 +214,7 @@ else
             layout.CoverPhotoId = photoId;
             await Catalog.SaveLayoutAsync(layout);
             coverPhotoIds[album.Id] = photoId;
+            coverPhotos[album.Id] = photos.First(photo => photo.Id == photoId);
         }
         catch (Exception exception)
         {
@@ -310,6 +326,7 @@ else
             await Catalog.SaveLayoutAsync(layout);
             await Catalog.TouchAsync(album.Id);
             coverPhotoIds[album.Id] = photo.Id;
+            coverPhotos[album.Id] = photo;
         }
         catch (Exception exception)
         {

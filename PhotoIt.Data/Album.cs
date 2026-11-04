@@ -9,6 +9,8 @@ public class Album
     public BackGroundFill BackGroundFill { get; set; } = new BackGroundFill() { BackroundColor="white"};
     public string Name { get; set; } = string.Empty;
     public string FullDescription { get; set; } = string.Empty;
+    public string AlbumType { get; set; } = "travel";
+    public List<AlbumMetadataValue> Metadata { get; set; } = [];
 
     public TripGraph TripGraph { get; set; } = new TripGraph(); 
     public DateTime? TravelStartDate { get; set; }

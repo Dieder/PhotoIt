@@ -18,6 +18,7 @@
         <span class="visually-hidden">Loading album...</span>
     </div>
 }
+
 else if (album is null)
 {
     <div class="alert alert-warning">Album not found.</div>
@@ -170,6 +171,18 @@ else
                     <h1>@activeChapter.Title</h1>
                     <p>@activeChapter.Days day@(activeChapter.Days == 1 ? "" : "s") · @activeChapter.Photos.Count photo@(activeChapter.Photos.Count == 1 ? "" : "s")</p>
                 </div>
+                @if (GetChapterMetadataSummary(activeChapter).Count > 0)
+                {
+                    <dl class="album-metadata-summary chapter-metadata-summary">
+                        @foreach (var item in GetChapterMetadataSummary(activeChapter))
+                        {
+                            <div>
+                                <dt>@item.Label</dt>
+                                <dd>@item.Value</dd>
+                            </div>
+                        }
+                    </dl>
+                }
                 @if (activeChapter.Mode == AlbumChapterMode.ChapterWithPages)
                 {
                     @if (activeChapter.Pages.Count == 0)
@@ -228,9 +241,10 @@ else
                         }
                     </div>
                     <div class="magazine-hero-meta">
-                        <span>@GetTravelPeriod()</span>
+                        <span>@GetCoverPeriod()</span>
                         <span>@photos.Count photo@(photos.Count == 1 ? "" : "s")</span>
-                        @if (album.ShowRouteOnCover && HasRoute)
+                        @if (GetAlbumType().Id == AlbumTypeCatalog.Default.Id
+                            && album.ShowRouteOnCover && HasRoute)
                         {
                             <button type="button" class="magazine-hero-route" @onclick="OpenRouteMap">
                                 @GetDistanceLabel() · View route
@@ -255,39 +269,20 @@ else
                         </section>
 
                         <section class="magazine-info-card magazine-stats-card">
-                            <p class="magazine-eyebrow">The journey</p>
-                            <h2>Trip statistics</h2>
+                            <p class="magazine-eyebrow">@GetAlbumType().Icon @GetAlbumType().Name</p>
+                            <h2>@GetAlbumType().Name summary</h2>
                             <div class="magazine-stats">
-                                <div>
-                                    <svg class="magazine-stat-icon" viewBox="0 0 24 24" aria-hidden="true">
-                                        <rect x="3" y="5" width="18" height="14" rx="2"></rect>
-                                        <circle cx="8.5" cy="10" r="1.5"></circle>
-                                        <path d="m21 15-5-5L5 19"></path>
-                                    </svg>
-                                    <strong>@photos.Count</strong><span>Photos</span>
-                                </div>
-                                <div>
-                                    <svg class="magazine-stat-icon" viewBox="0 0 24 24" aria-hidden="true">
-                                        <rect x="3" y="4" width="18" height="17" rx="2"></rect>
-                                        <path d="M16 2v4M8 2v4M3 10h18"></path>
-                                    </svg>
-                                    <strong>@GetTravelDayLabel()</strong><span>Days</span>
-                                </div>
-                                @if (album.ShowRouteOnCover && HasRoute)
+                                @foreach (var item in GetAlbumSummaryItems())
                                 {
-                                    <button type="button" class="magazine-distance-stat" @onclick="OpenRouteMap">
-                                        <svg class="magazine-stat-icon" viewBox="0 0 24 24" aria-hidden="true">
-                                            <path d="M3 6.5 8 4l8 3 5-2.5v13L16 20l-8-3-5 2.5z"></path>
-                                            <path d="M8 4v13M16 7v13"></path>
-                                            <circle cx="12" cy="10" r="1.5"></circle>
-                                        </svg>
-                                        <strong>@GetDistanceNumber()</strong><span>km · route</span>
-                                    </button>
+                                    <div>
+                                        <strong>@item.Value</strong><span>@item.Label</span>
+                                    </div>
                                 }
                             </div>
                         </section>
 
-                        @if (album.ShowRouteOnCover && HasRoute)
+                        @if (GetAlbumType().Id == AlbumTypeCatalog.Default.Id
+                            && album.ShowRouteOnCover && HasRoute)
                         {
                             <section class="magazine-info-card magazine-route-card">
                                 <div class="magazine-route-heading">
@@ -308,7 +303,7 @@ else
                         <section class="magazine-chapters">
                             <div class="magazine-section-heading">
                                 <div>
-                                    <p class="magazine-eyebrow">Explore our journey day by day</p>
+                                    <p class="magazine-eyebrow">@GetAlbumType().PresentationHint</p>
                                     <h2>Chapters</h2>
                                 </div>
                                 <span>@chapters.Count chapters</span>
@@ -470,7 +465,9 @@ else
     private bool routeMapInitialized;
     private DisplayChapter? activeChapter => chapters.FirstOrDefault(chapter => chapter.Id == activeChapterId);
     private AlbumPhoto? searchPreviewPhoto => photos.FirstOrDefault(photo => photo.Id == searchPreviewPhotoId);
-    private bool HasRoute => album?.TripGraph?.Legs.Any(leg =>
+    private AlbumTypeDefinition GetAlbumType() => AlbumTypeCatalog.Get(album?.AlbumType);
+    private bool HasRoute => GetAlbumType().Id == AlbumTypeCatalog.Default.Id
+        && album?.TripGraph?.Legs.Any(leg =>
         leg.From.HasGeoPoint() && leg.To.HasGeoPoint()) == true;
 
     protected override async Task OnInitializedAsync()
@@ -487,7 +484,11 @@ else
             photoLookup = photos.ToDictionary(photo => photo.Id, StringComparer.OrdinalIgnoreCase);
             album.Chapters ??= [];
             foreach (var chapter in album.Chapters)
+            {
                 chapter.PhotoIds ??= [];
+                chapter.Metadata ??= [];
+            }
+            album.Metadata ??= [];
             BuildChapters();
             totalPages = 2 + (albumLayout?.Pages.Count(page => string.IsNullOrWhiteSpace(page.ChapterId)) ?? 0);
             UpdateCurrentContentPage();
@@ -578,6 +579,11 @@ else
             ? first ?? last!
             : $"{first ?? "Start date unknown"} – {last}";
     }
+
+    private string GetCoverPeriod() =>
+        GetAlbumType().Id == AlbumTypeCatalog.Default.Id
+            ? GetTravelPeriod()
+            : GetAlbumType().Description;
 
     private int GetTravelDayCount()
     {
@@ -715,7 +721,8 @@ else
                 albumLayout?.Pages
                     .Where(page => page.ChapterId == chapter.Id)
                     .OrderBy(page => page.Number)
-                    .ToList() ?? []));
+                    .ToList() ?? [],
+                chapter.Metadata ?? []));
         }
 
         if (album.Chapters.Count > 0)
@@ -739,8 +746,167 @@ else
                 groupPhotos,
                 1,
                 AlbumChapterMode.ChapterOnly,
+                [],
                 []));
         }
+    }
+
+    private List<MetadataSummaryItem> GetAlbumSummaryItems()
+    {
+        var type = GetAlbumType();
+        var result = type.AlbumFields
+            .Where(field => field.ShowOnCover)
+            .Select(field => (Field: field, Value: AlbumTypeCatalog.GetValue(album?.Metadata, type.Id, field.Id)))
+            .Where(item => !string.IsNullOrWhiteSpace(item.Value))
+            .Select(item => new MetadataSummaryItem(
+                item.Field.Label,
+                FormatMetadataValue(item.Field, item.Value!)))
+            .ToList();
+        result.Add(new MetadataSummaryItem("Photos", photos.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        if (type.Id == AlbumTypeCatalog.Default.Id)
+        {
+            if (album?.TravelStartDate is DateTime travelStart)
+                result.Add(new MetadataSummaryItem("Start date", travelStart.ToString("d MMM yyyy")));
+            if (album?.TravelEndDate is DateTime travelEnd)
+                result.Add(new MetadataSummaryItem("End date", travelEnd.ToString("d MMM yyyy")));
+            result.Add(new MetadataSummaryItem("Travel days", GetTravelDayLabel()));
+            if (album?.ShowRouteOnCover == true && HasRoute)
+                result.Add(new MetadataSummaryItem("Route distance", $"{GetDistanceNumber()} km"));
+        }
+        else
+        {
+            switch (type.Id)
+            {
+                case "baby-kids":
+                case "pet":
+                    AddChapterCount(result, "Milestones", "milestone");
+                    break;
+                case "food-cooking":
+                    AddChapterCount(result, "Dishes", "dish");
+                    AddChapterCount(result, "Recipes", "recipe");
+                    break;
+                case "family":
+                    AddChapterCount(result, "Events", "event");
+                    break;
+                case "sports":
+                    AddChapterCount(result, "Matches/events", "match");
+                    AddChapterCount(result, "Achievements", "achievements");
+                    var wins = CountChapterValues("result", value =>
+                        value.Contains("win", StringComparison.OrdinalIgnoreCase));
+                    if (wins > 0)
+                        result.Add(new MetadataSummaryItem("Wins", wins.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                    break;
+                case "nature-wildlife":
+                    AddDistinctChapterCount(result, "Species observed", "species");
+                    var observationDays = chapters.Select(chapter => chapter.DateLabel ?? chapter.Title)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Count();
+                    if (observationDays > 0)
+                        result.Add(new MetadataSummaryItem(
+                            "Observation days",
+                            observationDays.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                    break;
+                case "corporate-events":
+                    AddChapterCount(result, "Sessions", "session");
+                    break;
+                case "school-years":
+                    AddChapterCount(result, "Activities", "activity");
+                    break;
+                case "bucket-list":
+                    var totalGoals = CountChapterValues("goal", _ => true);
+                    if (totalGoals > 0)
+                    {
+                        var completedGoals = CountChapterValues("completion-status", value =>
+                            value.Contains("complete", StringComparison.OrdinalIgnoreCase));
+                        result.Add(new MetadataSummaryItem(
+                            "Completed goals",
+                            $"{completedGoals.ToString(System.Globalization.CultureInfo.InvariantCulture)} / {totalGoals.ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+                    }
+                    break;
+                case "home-renovation":
+                    AddDistinctChapterCount(result, "Rooms renovated", "room");
+                    var totalCost = CountChapterValues("cost", _ => true, value =>
+                        int.TryParse(value, System.Globalization.NumberStyles.Integer,
+                            System.Globalization.CultureInfo.InvariantCulture, out var cost) ? cost : 0);
+                    if (totalCost > 0)
+                    {
+                        var currency = AlbumTypeCatalog.GetValue(album?.Metadata, type.Id, "currency");
+                        result.Add(new MetadataSummaryItem(
+                            "Actual cost",
+                            $"{totalCost.ToString("N0", System.Globalization.CultureInfo.CurrentCulture)}{(string.IsNullOrWhiteSpace(currency) ? string.Empty : $" {currency}")}"));
+                    }
+                    break;
+                case "recipe-food-journal":
+                    AddChapterCount(result, "Recipes", "recipe");
+                    var attempts = CountChapterValues("attempts", _ => true, value =>
+                        int.TryParse(value, System.Globalization.NumberStyles.Integer,
+                            System.Globalization.CultureInfo.InvariantCulture, out var count) ? count : 0);
+                    if (attempts > 0)
+                        result.Add(new MetadataSummaryItem(
+                            "Cooking attempts",
+                            attempts.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                    break;
+            }
+        }
+
+        return result;
+    }
+
+    private int CountChapterValues(string fieldId, Func<string, bool> predicate, Func<string, int>? valueSelector = null)
+    {
+        var typeId = GetAlbumType().Id;
+        var values = chapters
+            .Select(chapter => AlbumTypeCatalog.GetValue(chapter.Metadata, typeId, fieldId))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .Where(predicate);
+        return valueSelector is null ? values.Count() : values.Sum(valueSelector);
+    }
+
+    private void AddChapterCount(List<MetadataSummaryItem> result, string label, string fieldId)
+    {
+        var count = CountChapterValues(fieldId, _ => true);
+        if (count == 0)
+            return;
+
+        result.Add(new MetadataSummaryItem(
+            label,
+            count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
+    private void AddDistinctChapterCount(List<MetadataSummaryItem> result, string label, string fieldId)
+    {
+        var typeId = GetAlbumType().Id;
+        var count = chapters
+            .Select(chapter => AlbumTypeCatalog.GetValue(chapter.Metadata, typeId, fieldId))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        if (count == 0)
+            return;
+        result.Add(new MetadataSummaryItem(label, count.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
+    private List<MetadataSummaryItem> GetChapterMetadataSummary(DisplayChapter chapter)
+    {
+        var type = GetAlbumType();
+        return type.ChapterFields
+            .Select(field => (Field: field, Value: AlbumTypeCatalog.GetValue(chapter.Metadata, type.Id, field.Id)))
+            .Where(item => !string.IsNullOrWhiteSpace(item.Value))
+            .Select(item => new MetadataSummaryItem(
+                item.Field.Label,
+                FormatMetadataValue(item.Field, item.Value!)))
+            .ToList();
+    }
+
+    private static string FormatMetadataValue(AlbumMetadataFieldDefinition field, string value)
+    {
+        var formattedValue = field.ValueType == AlbumMetadataValueType.Date
+            && DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var date)
+                ? date.ToString("d MMM yyyy", System.Globalization.CultureInfo.CurrentCulture)
+                : value;
+        return string.IsNullOrWhiteSpace(field.Unit) ? formattedValue : $"{formattedValue} {field.Unit}";
     }
 
     private int GetChapterDayCount(AlbumChapter chapter, IReadOnlyList<AlbumPhoto> chapterPhotos)
@@ -862,5 +1028,8 @@ else
         List<AlbumPhoto> Photos,
         int Days,
         AlbumChapterMode Mode,
-        List<LayoutPage> Pages);
+        List<LayoutPage> Pages,
+        List<AlbumMetadataValue> Metadata);
+
+    private sealed record MetadataSummaryItem(string Label, string Value);
 }

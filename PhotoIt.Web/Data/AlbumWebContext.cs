@@ -35,7 +35,9 @@ public class AlbumWebContext(DbContextOptions<AlbumWebContext> options) : Identi
                     leg.OwnsOne(routeLeg => routeLeg.From);
                     leg.OwnsOne(routeLeg => routeLeg.To);
                 }));
-            entity.OwnsMany(album => album.Chapters);
+            entity.OwnsMany(album => album.Metadata);
+            entity.OwnsMany(album => album.Chapters, chapter =>
+                chapter.OwnsMany(item => item.Metadata));
         });
 
         modelBuilder.Entity<AlbumPhoto>(entity =>

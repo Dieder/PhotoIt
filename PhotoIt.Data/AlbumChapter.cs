@@ -9,4 +9,5 @@ public sealed class AlbumChapter
     public string? ThumbnailPhotoId { get; set; }
     public AlbumChapterMode Mode { get; set; } = AlbumChapterMode.ChapterOnly;
     public List<string> PhotoIds { get; set; } = [];
+    public List<AlbumMetadataValue> Metadata { get; set; } = [];
 }

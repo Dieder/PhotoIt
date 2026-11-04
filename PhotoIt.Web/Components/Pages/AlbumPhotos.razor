@@ -233,6 +233,25 @@ else
                         </div>
                     </div>
 
+                    <div class="row g-3 mt-2">
+                        @foreach (var field in ChapterMetadataFields)
+                        {
+                            <div class="col-12 col-md-6" @key="field.Id">
+                                <label class="form-label" for="@($"chapter-metadata-{field.Id}")">@field.Label</label>
+                                <input id="@($"chapter-metadata-{field.Id}")"
+                                       class="form-control"
+                                       type="@GetMetadataInputType(field.ValueType)"
+                                       step="@(field.ValueType == AlbumMetadataValueType.Integer ? "1" : null)"
+                                       value="@GetChapterMetadataValue(field.Id)"
+                                       @onchange="args => SetChapterMetadataValue(field.Id, args.Value?.ToString())" />
+                                @if (!string.IsNullOrWhiteSpace(field.Unit))
+                                {
+                                    <div class="form-text">@field.Unit</div>
+                                }
+                            </div>
+                        }
+                    </div>
+
                     <div class="mt-3">
                         <span class="form-label d-block">Photos in this chapter (@ChapterPickerPhotos.Count())</span>
                         <div class="chapter-photo-picker">
@@ -322,6 +341,9 @@ else
     private string? editingChapterId;
     private bool isChapterEditorOpen;
     private readonly HashSet<string> selectedChapterPhotoIds = new(StringComparer.OrdinalIgnoreCase);
+    private List<AlbumMetadataValue> chapterMetadata = [];
+    private IReadOnlyList<AlbumMetadataFieldDefinition> ChapterMetadataFields =>
+        AlbumTypeCatalog.Get(album?.AlbumType).ChapterFields;
     private int uploadProgress;
     private int uploadTotal;
     private string uploadStatus = "Ready";
@@ -384,7 +406,11 @@ else
 
             album.Chapters ??= [];
             foreach (var chapter in album.Chapters)
+            {
                 chapter.PhotoIds ??= [];
+                chapter.Metadata ??= [];
+            }
+            album.Metadata ??= [];
             albumLayout = await Catalog.GetLayoutAsync(Id);
             await LoadPhotosAsync();
 
@@ -610,6 +636,13 @@ else
         foreach (var photoId in chapter.PhotoIds)
             selectedChapterPhotoIds.Add(photoId);
         chapterThumbnailPhotoId = chapter.ThumbnailPhotoId;
+        chapterMetadata = (chapter.Metadata ?? []).Select(item => new AlbumMetadataValue
+        {
+            Id = item.Id,
+            FunctionalName = item.FunctionalName,
+            FieldId = item.FieldId,
+            Value = item.Value
+        }).ToList();
         chapterError = null;
     }
 
@@ -680,6 +713,19 @@ else
             && photos.Any(photo => photo.Id == chapterThumbnailPhotoId && !PhotoType.IsVideo(photo))
             ? chapterThumbnailPhotoId
             : selectedChapterPhotoIds.First(photoId => photos.Any(photo => photo.Id == photoId && !PhotoType.IsVideo(photo)));
+        var metadataError = ValidateChapterMetadata();
+        if (metadataError is not null)
+        {
+            chapterError = metadataError;
+            return;
+        }
+        chapter.Metadata = chapterMetadata.Select(item => new AlbumMetadataValue
+        {
+            Id = item.Id,
+            FunctionalName = item.FunctionalName,
+            FieldId = item.FieldId,
+            Value = item.Value
+        }).ToList();
 
         foreach (var existing in album.Chapters.Where(item => item.Id != chapter.Id))
             existing.PhotoIds.RemoveAll(photoId => selectedChapterPhotoIds.Contains(photoId));
@@ -748,6 +794,7 @@ else
         chapterEndDate = null;
         selectedChapterMode = album?.DefaultChapterMode ?? AlbumChapterMode.ChapterOnly;
         chapterThumbnailPhotoId = null;
+        chapterMetadata = [];
         selectedChapterPhotoIds.Clear();
         chapterError = null;
     }
@@ -757,6 +804,27 @@ else
 
     private static string GetChapterModeLabel(AlbumChapterMode mode) =>
         mode == AlbumChapterMode.ChapterWithPages ? "Chapter with pages" : "Chapter only";
+
+    private string GetChapterMetadataValue(string fieldId) =>
+        AlbumTypeCatalog.GetValue(chapterMetadata, album?.AlbumType ?? AlbumTypeCatalog.Default.Id, fieldId) ?? string.Empty;
+
+    private void SetChapterMetadataValue(string fieldId, string? value)
+    {
+        if (album is not null)
+            chapterMetadata = AlbumTypeCatalog.SetValue(chapterMetadata, album.AlbumType, fieldId, value);
+    }
+
+    private static string GetMetadataInputType(AlbumMetadataValueType valueType) => valueType switch
+    {
+        AlbumMetadataValueType.Date => "date",
+        AlbumMetadataValueType.Integer => "number",
+        _ => "text",
+    };
+
+    private string? ValidateChapterMetadata() =>
+        album is null
+            ? null
+            : AlbumTypeCatalog.ValidateValues(ChapterMetadataFields, chapterMetadata, album.AlbumType);
 
     private bool IsPhotoAssignedToChapterPage(string chapterId, string photoId) =>
         albumLayout?.Pages.Any(page =>
