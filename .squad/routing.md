@@ -6,6 +6,10 @@ How to decide who handles what.
 
 | Work Type | Route To | Examples |
 |-----------|----------|----------|
+| Architecture and cross-cutting coordination | Lead | System design, technical trade-offs, scoped review |
+| .NET services, EF Core, Cosmos DB, storage | Backend | Catalogs, persistence models, data access, blob integration |
+| Regression tests and quality validation | Tester | Focused tests, test design, failure reproduction |
+| Blazor UI and presentation | Frontend | Components, forms, client-side interaction, styling |
 
 Preset installation adds concrete routes for the configured team. Add or edit rows
 here only when their agent names also exist in the casting registry.
@@ -26,10 +30,10 @@ here only when their agent names also exist in the casting registry.
 
 ## Rules
 
-1. **Eager by default** — spawn all agents who could usefully start work, including anticipatory downstream work.
-2. **Scribe always runs** after substantial work, always as `mode: "background"`. Never blocks.
-3. **Quick facts → coordinator answers directly.** Don't spawn an agent for "what port does the server run on?"
-4. **When two agents could handle it**, pick the one whose domain is the primary concern.
-5. **"Team, ..." → fan-out.** Spawn all relevant agents in parallel as `mode: "background"`.
-6. **Anticipate downstream work.** If a feature is being built, spawn the tester to write test cases from requirements simultaneously.
+1. Assign exactly one accountable owner for each outcome; route by primary domain.
+2. Split work only for independently deliverable outcomes with distinct owners.
+3. Add a contributor or reviewer only for a concrete bounded need.
+4. Quick factual questions may be answered directly without dispatch.
+5. Scribe runs in the background only when accepted durable decisions need merging.
+6. Route to the member whose domain is the primary concern.
 7. **Issue-labeled work** — when a `squad:{member}` label is applied to an issue, route to that member. The Lead handles all `squad` (base label) triage.

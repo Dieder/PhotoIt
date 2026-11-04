@@ -90,7 +90,6 @@ public sealed class AlbumCatalog
         await using var db = _contextFactory.CreateDbContext();
         var existing = await db.Set<Album>()
             .Where(existing => existing.UserId == album.UserId)
-            .AsNoTracking()
             .FirstOrDefaultAsync(existing => existing.Id == album.Id, ct);
         if (existing is null)
             return false;
@@ -110,7 +109,7 @@ public sealed class AlbumCatalog
                 layout.Pages.Count(page => string.IsNullOrWhiteSpace(page.ChapterId)));
         }
 
-        db.Set<Album>().Update(album);
+        AlbumGraphUpdater.CopyInto(existing, album);
         await db.SaveChangesAsync(ct);
         return true;
     }
