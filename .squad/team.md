@@ -16,6 +16,7 @@
 | Backend | .NET & Cosmos Persistence | `.squad/agents/backend/charter.md` | ✅ Active |
 | Tester | Regression Tests & Quality | `.squad/agents/tester/charter.md` | ✅ Active |
 | Frontend | Blazor UI | `.squad/agents/frontend/charter.md` | ✅ Active |
+| Infra | DevOps & Platform | `.squad/agents/infra/charter.md` | ✅ Active |
 | Scribe | Decision Merger | `.squad/agents/scribe/charter.md` | 📋 Silent |
 | Ralph | Work Monitor | `.squad/agents/ralph/charter.md` | 🔄 Monitor |
 | Rai | RAI Reviewer | `.squad/agents/Rai/charter.md` | 🛡️ RAI |

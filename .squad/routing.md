@@ -10,6 +10,7 @@ How to decide who handles what.
 | .NET services, EF Core, Cosmos DB, storage | Backend | Catalogs, persistence models, data access, blob integration |
 | Regression tests and quality validation | Tester | Focused tests, test design, failure reproduction |
 | Blazor UI and presentation | Frontend | Components, forms, client-side interaction, styling |
+| DevOps, platform, deployment infrastructure, and CI/CD | Infra | Infrastructure-as-code, deployment pipelines, environment configuration |
 
 Preset installation adds concrete routes for the configured team. Add or edit rows
 here only when their agent names also exist in the casting registry.

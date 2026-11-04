@@ -335,6 +335,12 @@ The Coordinator owns preserving the scope the user requested.
 - Expanding scope requires explicit user approval. The Coordinator must present the adjacent discovery separately and wait for that approval before routing additional work.
 - If expansion is approved, route it as distinct focused work; do not silently fold it into the original task or PR.
 
+### User Approval and Clarification
+
+- Ask the user about missing requirements before making major changes. Treat architecture or infrastructure decisions, destructive or hard-to-reverse work, production-impacting behavior, and materially ambiguous scope as major. Do not block routine, low-risk implementation on questions that do not affect the outcome.
+- Do not modify deployment settings or secrets without explicit user approval for the specific change. Approval to investigate or advise is not approval to edit settings, change secret values, rotate credentials, or apply a deployment.
+- Never reveal secret values in responses, logs, tests, or committed files.
+
 The routing table determines **WHO** handles work. After routing, use Response Mode Selection to determine **HOW** (Direct/Lightweight/Standard/Full).
 
 | Signal | Action |
