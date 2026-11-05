@@ -46,9 +46,10 @@ else
         @foreach (var album in albums)
         {
             <div class="col">
-                <article class="card h-100 shadow-sm">
+                <article class="card h-100 shadow-sm album-card">
                     @if (coverPhotoIds.TryGetValue(album.Id, out var coverPhotoId))
                     {
+
                         <div class="album-cover-frame">
                             <img class="card-img-top @(IsPortraitCover(album.Id) ? "album-cover-portrait" : "")"
                                  src="albums/@album.Id/photos/@coverPhotoId/content"

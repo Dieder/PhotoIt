@@ -1,11 +1,24 @@
-.album-cover-frame {
-    height: 220px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.album-card {
+    transition: all 0.2s ease;
+    border-radius: 12px;
     overflow: hidden;
-    background: #f1f3f5;
 }
+
+    .album-card:hover {
+        background-color: honeydew;
+        border: 0.15rem solid black;
+    }
+
+    .album-cover-frame {
+        transform: translateY(-4px);
+        box-shadow: 0 .75rem 1.5rem rgba(0,0,0,.15);
+        height: 220px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: #f1f3f5;
+    }
 
 .album-cover-frame .card-img-top {
     width: 100%;
