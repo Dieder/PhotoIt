@@ -22,7 +22,7 @@ public sealed class PhotoThumbnailService
         }
 
         image.BackgroundColor = MagickColors.White;
-        image.Alpha(AlphaOption.Remove);
+        image.Alpha(AlphaAction.Remove);
         image.Strip();
         image.Quality = 84;
         image.Format = MagickFormat.Jpeg;
