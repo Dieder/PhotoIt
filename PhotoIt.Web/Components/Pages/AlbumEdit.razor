@@ -8,9 +8,17 @@
 @using Microsoft.AspNetCore.Authorization;
 @attribute [Authorize]
 <PageTitle>Edit album</PageTitle>
-@if (model is null)
+@if (isLoading)
 {
-    <p><em>Loading...</em></p>
+    <div class="d-flex justify-content-center align-items-center py-5" role="status" aria-live="polite">
+        <span class="spinner-border text-primary" aria-hidden="true"></span>
+        <span class="visually-hidden">Loading album...</span>
+    </div>
+}
+else if (model is null)
+{
+    <div class="alert alert-warning">Album not found.</div>
+    <a href="albums">Back to albums</a>
 }
 else
 {
@@ -27,33 +35,55 @@ else
     public string Id { get; set; } = string.Empty;
 
     private AlbumFormModel? model;
+    private bool isLoading = true;
 
     protected override async Task OnInitializedAsync()
     {
-        var album = Catalog.Get(Id);
-        if (album is null)
+        try
         {
-            Navigation.NavigateTo("albums");
-            return;
-        }
+            var album = await Catalog.GetAsync(Id);
+            if (album is null)
+            {
+                Navigation.NavigateTo("albums");
+                return;
+            }
 
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var currentUserId = CurrentUserHelper.GetUserId(authState.User);
-        if (currentUserId != album.UserId)
-        {
-            Navigation.NavigateTo($"albums/{album.Id}");
-            return;
-        }
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var currentUserId = CurrentUserHelper.GetUserId(authState.User);
+            if (currentUserId != album.UserId)
+            {
+                Navigation.NavigateTo($"albums/{album.Id}");
+                return;
+            }
 
-        model = new AlbumFormModel
+            model = new AlbumFormModel
+            {
+                Id = album.Id,
+                CreatedUtc = album.CreatedUtc,
+                UpdatedUtc = album.UpdatedUtc,
+                Intro = album.Intro,
+                Name = album.Name,
+                ImageFolderName = album.ImageFolderName,
+                FullDescription = album.FullDescription,
+                AlbumType = AlbumTypeCatalog.Get(album.AlbumType).Id,
+                Metadata = (album.Metadata ?? []).Select(item => new AlbumMetadataValue
+                {
+                    Id = item.Id,
+                    FunctionalName = item.FunctionalName,
+                    FieldId = item.FieldId,
+                    Value = item.Value
+                }).ToList(),
+                TravelStartDate = album.TravelStartDate,
+                TravelEndDate = album.TravelEndDate,
+                ShowRouteOnCover = album.ShowRouteOnCover,
+                UseChapterTitles = album.UseChapterTitles,
+                DefaultChapterMode = album.DefaultChapterMode,
+                Chapters = album.Chapters ?? [],
+            };
+        }
+        finally
         {
-            Id = album.Id,
-            CreatedUtc = album.CreatedUtc,
-            UpdatedUtc = album.UpdatedUtc,
-            Intro = album.Intro,
-            Name = album.Name,
-            ImageFolderName = album.ImageFolderName,
-            FullDescription = album.FullDescription,
-        };
+            isLoading = false;
+        }
     }
 }

@@ -1,0 +1,393 @@
+@page "/albums/{Id}/photos"
+@rendermode InteractiveServer
+@using PhotoIt.Data
+@using PhotoIt.AiOrchestration
+@using AiFoundryLocal
+@inject AlbumCatalog Catalog
+@inject AzurePhotoStorage Storage
+@inject PhotoVisionOrchestrator VisionOrchestrator
+@inject Phi3VisionModel VisionModel
+@inject PhotoIndexQueue IndexQueue
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<AlbumPhotoSearch> Logger
+
+<PageTitle>Search photos - @(album?.Name ?? "Album")</PageTitle>
+
+@if (isLoading)
+{
+    <div class="d-flex justify-content-center align-items-center py-5" role="status" aria-live="polite">
+        <span class="spinner-border text-primary" aria-hidden="true"></span>
+        <span class="visually-hidden">Loading album photos...</span>
+    </div>
+}
+else if (album is null)
+{
+    <div class="alert alert-warning">Album not found.</div>
+    <a href="/albums">Back to albums</a>
+}
+else
+{
+    <main class="album-photo-search-page">
+        <a class="album-photo-search-back" href="/albums/@album.Id">&larr; Back to album</a>
+        <header class="album-photo-search-header">
+            <p class="text-uppercase text-muted small fw-semibold mb-2">@(album.Name)</p>
+            <h1>Search photos</h1>
+            <p>Find photos and videos across this album by filename, description, tags, camera, or date.</p>
+        </header>
+
+        <label class="album-photo-search-field">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="10.8" cy="10.8" r="6.8"></circle>
+                <path d="m16 16 5 5"></path>
+            </svg>
+            <input type="search"
+                   aria-label="Search album photos"
+                   placeholder="Search photos and videos..."
+                   @bind="searchQuery"
+                   @bind:event="oninput" />
+        </label>
+
+        @{
+            var searchResults = SearchResults;
+        }
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="alert alert-danger mt-3" role="alert">@errorMessage</div>
+        }
+
+        @if (photos.Count == 0)
+        {
+            <p class="album-photo-search-empty">No photos have been uploaded to this album yet.</p>
+        }
+        else if (searchResults.Count == 0)
+        {
+            <p class="album-photo-search-empty">No photos match “@searchQuery”.</p>
+        }
+        else
+        {
+            <p class="album-photo-search-count">@searchResults.Count result@(searchResults.Count == 1 ? "" : "s")</p>
+            <div class="album-photo-search-grid">
+                @foreach (var photo in searchResults)
+                {
+                    <article class="album-photo-search-result">
+                        <button type="button" class="album-photo-search-preview" @onclick="() => OpenPreview(photo.Id)">
+                            @if (PhotoType.IsVideo(photo))
+                            {
+                                <span class="album-photo-search-thumbnail album-photo-search-video" aria-hidden="true">▶</span>
+                            }
+                            else
+                            {
+                                <img class="album-photo-search-thumbnail"
+                                     src="@GetThumbnailUrl(photo.Id)"
+                                     alt=""
+                                     loading="lazy" />
+                            }
+                            <span class="album-photo-search-copy">
+                                <strong title="@photo.OriginalFileName">@photo.OriginalFileName</strong>
+                                <span>@AlbumCatalog.GetDisplayDate(photo).ToString("d MMM yyyy")</span>
+                                @if (!string.IsNullOrWhiteSpace(photo.CameraMake) || !string.IsNullOrWhiteSpace(photo.CameraModel))
+                                {
+                                    <span>@GetCameraDisplay(photo)</span>
+                                }
+                                @if (photo.Tags.Count > 0)
+                                {
+                                    <span>@string.Join(" · ", photo.Tags)</span>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(photo.Description))
+                                {
+                                    <span>@photo.Description</span>
+                                }
+                            </span>
+                        </button>
+                        @if (canEdit)
+                        {
+                            <div class="album-photo-search-actions">
+                                @if (VisionModel.IsLoaded && !PhotoType.IsVideo(photo))
+                                {
+                                    <button type="button"
+                                            class="album-photo-search-action"
+                                            disabled="@IsPhotoIndexing(photo)"
+                                            @onclick="() => IndexPhotoAsync(photo)">
+                                        @(IsPhotoIndexing(photo) ? "Indexing…" : "Index")
+                                    </button>
+                                }
+                                <button type="button"
+                                        class="album-photo-search-action danger"
+                                        @onclick="() => RequestDeleteAsync(photo)">Delete</button>
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </main>
+}
+
+@if (PreviewPhoto is not null)
+{
+    <div class="album-photo-preview-backdrop" role="presentation" @onclick="ClosePreview">
+        <section class="album-photo-preview" role="dialog" aria-modal="true" aria-label="@PreviewPhoto.OriginalFileName" @onclick:stopPropagation="true">
+            <div class="album-photo-preview-header">
+                <strong>@PreviewPhoto.OriginalFileName</strong>
+                <button type="button" class="album-photo-preview-close" aria-label="Close preview" @onclick="ClosePreview">×</button>
+            </div>
+            @if (PhotoType.IsVideo(PreviewPhoto))
+            {
+                <video src="@GetContentUrl(PreviewPhoto.Id)" controls autoplay playsinline preload="metadata"></video>
+            }
+            else
+            {
+                <img src="@GetContentUrl(PreviewPhoto.Id)" alt="@PreviewPhoto.OriginalFileName" />
+            }
+            <div class="album-photo-preview-info">
+                <span>@AlbumCatalog.GetDisplayDate(PreviewPhoto).ToString("d MMM yyyy")</span>
+                @if (!string.IsNullOrWhiteSpace(PreviewPhoto.CameraMake) || !string.IsNullOrWhiteSpace(PreviewPhoto.CameraModel))
+                {
+                    <span>@GetCameraDisplay(PreviewPhoto)</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(PreviewPhoto.LensModel))
+                {
+                    <span>@PreviewPhoto.LensModel</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(PreviewPhoto.Description))
+                {
+                    <p>@PreviewPhoto.Description</p>
+                }
+                @if (PreviewPhoto.Tags.Count > 0)
+                {
+                    <div class="album-photo-preview-tags">
+                        @foreach (var tag in PreviewPhoto.Tags)
+                        {
+                            <span>@tag</span>
+                        }
+                    </div>
+                }
+            </div>
+        </section>
+    </div>
+}
+
+@if (PendingDeletePhoto is not null)
+{
+    <div class="album-photo-preview-backdrop" role="presentation" @onclick="CancelDelete">
+        <section class="album-photo-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-photo-title" @onclick:stopPropagation="true">
+            <div class="album-photo-preview-header">
+                <h2 id="delete-photo-title">Permanently delete this photo?</h2>
+                <button type="button" class="album-photo-preview-close" aria-label="Cancel deletion" disabled="@isDeleting" @onclick="CancelDelete">×</button>
+            </div>
+            <div class="album-photo-delete-summary">
+                @if (PhotoType.IsVideo(PendingDeletePhoto))
+                {
+                    <span class="album-photo-search-thumbnail album-photo-search-video" aria-hidden="true">▶</span>
+                }
+                else
+                {
+                    <img src="@GetThumbnailUrl(PendingDeletePhoto.Id)" alt="" />
+                }
+                <strong>@PendingDeletePhoto.OriginalFileName</strong>
+            </div>
+            <p>This permanently removes the uploaded file and cannot be undone.</p>
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <div class="alert alert-danger" role="alert">@errorMessage</div>
+            }
+            <div class="album-photo-delete-actions">
+                <button type="button" class="btn btn-outline-secondary" disabled="@isDeleting" @onclick="CancelDelete">Cancel</button>
+                <button type="button" class="btn btn-danger" disabled="@isDeleting" @onclick="ConfirmDeleteAsync">
+                    @(isDeleting ? "Deleting…" : "Delete photo")
+                </button>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string Id { get; set; } = string.Empty;
+
+    private Album? album;
+    private bool isLoading = true;
+    private IReadOnlyList<AlbumPhoto> photos = [];
+    private string searchQuery = string.Empty;
+    private string? previewPhotoId;
+    private bool canEdit;
+    private string? errorMessage;
+    private string? pendingDeletePhotoId;
+    private bool isDeleting;
+    private readonly HashSet<string> indexingPhotoIds = new(StringComparer.OrdinalIgnoreCase);
+
+    private List<AlbumPhoto> SearchResults
+    {
+        get
+        {
+            var terms = searchQuery.Split(
+                (char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return photos
+                .Where(photo => terms.Length == 0 || MatchesSearch(photo, terms))
+                .OrderByDescending(photo => photo.DateTakenUtc ?? photo.UploadedUtc)
+                .ToList();
+        }
+    }
+
+    private AlbumPhoto? PreviewPhoto => photos.FirstOrDefault(photo => photo.Id == previewPhotoId);
+    private AlbumPhoto? PendingDeletePhoto => photos.FirstOrDefault(photo => photo.Id == pendingDeletePhotoId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            album = await Catalog.GetAsync(Id);
+            if (album is null)
+                return;
+
+            album.Chapters ??= [];
+            foreach (var chapter in album.Chapters)
+                chapter.PhotoIds ??= [];
+            photos = await Catalog.ListPhotosAsync(album.Id);
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            canEdit = CurrentUserHelper.GetUserId(authState.User) == album.UserId;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private static bool MatchesSearch(AlbumPhoto photo, IReadOnlyList<string> terms)
+    {
+        var searchableText = string.Join(' ', new[]
+        {
+            photo.OriginalFileName,
+            photo.Description,
+            photo.CameraMake,
+            photo.CameraModel,
+            photo.LensModel,
+            photo.FocalLength,
+            photo.FocalLength35Mm,
+            photo.SubjectDistance,
+            photo.Flash,
+            photo.Dimensions,
+            photo.ExposureTime,
+            photo.FNumber,
+            photo.IsoSpeed,
+            photo.ExposureProgram,
+            photo.WhiteBalance,
+            photo.Latitude?.ToString("F6"),
+            photo.Longitude?.ToString("F6"),
+            AlbumCatalog.GetDisplayDate(photo).ToString("d MMM yyyy")
+        }.Concat(photo.Tags));
+
+        return terms.All(term => searchableText.Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string GetThumbnailUrl(string photoId) => $"/albums/{album!.Id}/photos/{photoId}/thumbnail";
+    private string GetContentUrl(string photoId) => $"/albums/{album!.Id}/photos/{photoId}/content";
+
+    private void OpenPreview(string photoId) => previewPhotoId = photoId;
+    private void ClosePreview() => previewPhotoId = null;
+
+    private string GetCameraDisplay(AlbumPhoto photo)
+    {
+        var camera = new[] { photo.CameraMake, photo.CameraModel }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim());
+        return string.Join(" ", camera);
+    }
+
+    private bool IsPhotoIndexing(AlbumPhoto photo) =>
+        indexingPhotoIds.Contains(photo.Id) || IndexQueue.IsPending(photo.Id);
+
+    private async Task IndexPhotoAsync(AlbumPhoto photo)
+    {
+        if (!canEdit)
+            return;
+
+        errorMessage = null;
+        indexingPhotoIds.Add(photo.Id);
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+            await VisionOrchestrator.IndexPhotoAsync(photo, Catalog, Storage);
+            photos = await Catalog.ListPhotosAsync(Id);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Photo indexing failed. AlbumId: {AlbumId}, MediaId: {MediaId}", Id, photo.Id);
+            errorMessage = $"Tag indexing failed: {exception.Message}";
+        }
+        finally
+        {
+            indexingPhotoIds.Remove(photo.Id);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RequestDeleteAsync(AlbumPhoto photo)
+    {
+        if (!canEdit || album is null)
+            return;
+
+        errorMessage = null;
+        try
+        {
+            if (await Catalog.IsPhotoReferencedAsync(photo.Id))
+            {
+                errorMessage = "This photo is still used by an album cover, chapter, or page. Remove those references before deleting it.";
+                return;
+            }
+
+            pendingDeletePhotoId = photo.Id;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Photo reference check failed. AlbumId: {AlbumId}, MediaId: {MediaId}", photo.AlbumId, photo.Id);
+            errorMessage = $"Could not check whether the photo is in use: {exception.Message}";
+        }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (!canEdit || album is null || PendingDeletePhoto is not { } photo)
+            return;
+
+        isDeleting = true;
+        errorMessage = null;
+        var photoRecordDeleted = false;
+        try
+        {
+            if (!await Catalog.DeletePhotoAsync(photo.Id))
+            {
+                errorMessage = "The photo is in use or no longer exists. Remove its references before deleting it.";
+                return;
+            }
+
+            photoRecordDeleted = true;
+            pendingDeletePhotoId = null;
+            previewPhotoId = null;
+            photos = await Catalog.ListPhotosAsync(Id);
+            if (!string.IsNullOrWhiteSpace(photo.ThumbnailBlobName))
+                await Storage.DeleteAsync(photo.ThumbnailBlobName);
+            await Storage.DeleteAsync(photo.BlobName);
+            await Catalog.TouchAsync(Id);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Media deletion failed. AlbumId: {AlbumId}, MediaId: {MediaId}", photo.AlbumId, photo.Id);
+            errorMessage = photoRecordDeleted
+                ? $"The photo was removed from the album, but its blob cleanup failed: {exception.Message}"
+                : $"Photo deletion failed: {exception.Message}";
+        }
+        finally
+        {
+            isDeleting = false;
+        }
+    }
+
+    private void CancelDelete()
+    {
+        if (!isDeleting)
+            pendingDeletePhotoId = null;
+    }
+}

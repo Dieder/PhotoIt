@@ -10,15 +10,11 @@
 
   <ItemGroup>
     <PackageReference Include="EasyMDE.Blazor" Version="1.0.5" />
-    <PackageReference Include="Markdig" Version="1.3.2" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.12" />
-    <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.12" />
-    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.12">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
+    <PackageReference Include="Markdig" Version="1.6.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.14" />
+    <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.14" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.14" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Cosmos" Version="10.0.14" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,10 +23,6 @@
     <ProjectReference Include="..\PhotoIt.Core\PhotoIt.Core.csproj" />
     <ProjectReference Include="..\PhotoIt.Data\PhotoIt.Data.csproj" />
     <ProjectReference Include="..\PhotoIt.ServiceDefaults\PhotoIt.ServiceDefaults.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Migrations\" />
   </ItemGroup>
 
 </Project>

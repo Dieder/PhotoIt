@@ -33,6 +33,18 @@
             <div class="alert alert-info" role="status">@statusMessage</div>
         }
 
+        <div class="card mb-3">
+            <div class="card-body">
+                <label class="form-label" for="route-description">Cover route text</label>
+                <InputTextArea id="route-description"
+                               class="form-control"
+                               rows="3"
+                               maxlength="300"
+                               @bind-Value="Model.RouteDescription" />
+                <div class="form-text">Optional text shown on the album cover and route map. Leave blank to show the route places automatically. Save route to apply changes.</div>
+            </div>
+        </div>
+
         @foreach (var leg in Model.Legs.Select((item, index) => new { item, index }))
         {
             <div @key="leg.item" class="card mb-2">
@@ -256,7 +268,7 @@
             throw new InvalidOperationException("AlbumId parameter is required.");
         }
 
-        album = Catalog.Get(AlbumId) ?? throw new InvalidDataException("Album not found");
+        album = await Catalog.GetAsync(AlbumId) ?? throw new InvalidDataException("Album not found");
         Model = album.TripGraph ?? new TripGraph();
         Model.Legs.Where(x=>x.IsValid()).ToList().ForEach(leg =>
         {
@@ -432,24 +444,29 @@
         errorMessage = null;
         statusMessage = null;
 
-        placeSearchCts?.Cancel();
-        placeSearchCts?.Dispose();
+        var previousSearchCts = placeSearchCts;
         var searchCts = new CancellationTokenSource();
         placeSearchCts = searchCts;
-
-        if (point.Place.Trim().Length < 3)
-        {
-            await RefreshMapDisplayAsync();
-            return;
-        }
-
-        await RefreshMapDisplayAsync();
+        previousSearchCts?.Cancel();
 
         try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(500), searchCts.Token);
+            if (point.Place.Trim().Length < 3)
+            {
+                await RefreshMapDisplayAsync();
+                return;
+            }
+
+            await RefreshMapDisplayAsync();
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            if (searchCts.IsCancellationRequested || !ReferenceEquals(placeSearchCts, searchCts))
+                return;
+
             var suggestions = await NominatimClient.SearchPlacesAsync(point.Place.Trim(), ct: searchCts.Token);
-            if (searchCts.IsCancellationRequested || !ReferenceEquals(suggestionPoint, point))
+            if (searchCts.IsCancellationRequested ||
+                !ReferenceEquals(placeSearchCts, searchCts) ||
+                !ReferenceEquals(suggestionPoint, point))
                 return;
 
             placeSuggestions = suggestions;
@@ -465,6 +482,12 @@
             if (!searchCts.IsCancellationRequested)
                 errorMessage = $"Place search failed: {exception.Message}";
         }
+        finally
+        {
+            if (ReferenceEquals(placeSearchCts, searchCts))
+                placeSearchCts = null;
+            searchCts.Dispose();
+        }
     }
 
     private IReadOnlyList<GeoPoint> GetPlaceSuggestions(RoutePoint point) =>
@@ -472,7 +495,7 @@
 
     private async Task SelectPlaceAsync(RoutePoint point, GeoPoint place)
     {
-        placeSearchCts?.Cancel();
+        CancelPlaceSearch();
         point.Place = place.Name;
         point.Id = place.Name;
         point.FoundName = place.Name;
@@ -490,7 +513,7 @@
 
     private async Task ResolveTypedPlaceAsync(RoutePoint point)
     {
-        placeSearchCts?.Cancel();
+        CancelPlaceSearch();
         if (string.IsNullOrWhiteSpace(point.Place)
             || point.Place.Trim().Length < 3
             || string.Equals(point.Place, point.Id, StringComparison.OrdinalIgnoreCase))
@@ -528,6 +551,13 @@
     {
         foreach (var leg in Model.Legs)
             leg.DistanceKm = leg.CalculateDistanceKm();
+    }
+
+    private void CancelPlaceSearch()
+    {
+        var searchCts = placeSearchCts;
+        placeSearchCts = null;
+        searchCts?.Cancel();
     }
 
     private static string FormatTravelDates(RouteLeg leg)
@@ -577,7 +607,7 @@
                 leg.IsEditing = false;
             }
             album.TripGraph = Model;
-            if (!Catalog.Update(album))
+            if (!await Catalog.UpdateAsync(album))
             {
                 PhotoItTelemetry.RecordAlbumSave(false);
                 errorMessage = "The route could not be saved.";
@@ -632,8 +662,7 @@
 
     public async ValueTask DisposeAsync()
     {
-        placeSearchCts?.Cancel();
-        placeSearchCts?.Dispose();
+        CancelPlaceSearch();
         if (mapCallback is not null)
         {
             try

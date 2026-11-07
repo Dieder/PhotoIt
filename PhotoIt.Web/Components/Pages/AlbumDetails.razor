@@ -7,11 +7,19 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject ILogger<AlbumDetails> Logger
+@inject AzurePhotoStorage Storage
 @using PhotoIt.Web.Components
 
 <PageTitle>@(album?.Name ?? "Album")</PageTitle>
 
-@if (album is null)
+@if (isLoading)
+{
+    <div class="d-flex justify-content-center align-items-center py-5" role="status" aria-live="polite">
+        <span class="spinner-border text-primary" aria-hidden="true"></span>
+        <span class="visually-hidden">Loading album...</span>
+    </div>
+}
+else if (album is null)
 {
     <div class="alert alert-warning">
         Album not found.
@@ -48,24 +56,21 @@ else
 
     <div class="album-toolbar">
 
-        @if (hasLayout)
-        {
-            <a class="toolbar-button primary"
-               href="/albums/@album.Id/layout/view">
+        <a class="toolbar-button primary"
+           href="/albums/@album.Id/layout/view">
 
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" stroke-width="2" />
-                    <circle cx="12" cy="12" r="3" stroke-width="2" />
-                </svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" stroke-width="2" />
+                <circle cx="12" cy="12" r="3" stroke-width="2" />
+            </svg>
 
-                <span>View Album</span>
-            </a>
-        }
+            <span>View Album</span>
+        </a>
 
         @if (canEdit)
         {
             <a class="toolbar-button"
-               href="/albums/@album.Id/photos">
+               href="/albums/@album.Id/photos/manage">
 
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path d="M4 5h16v14H4z" stroke-width="2" />
@@ -139,7 +144,7 @@ else
 
             <button class="toolbar-button danger"
                     type="button"
-                    @onclick="DeleteAsync">
+                    @onclick="ShowDeleteConfirmation">
 
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path d="M3 6h18" stroke-width="2" />
@@ -170,37 +175,102 @@ else
                     </div>
                 </div>
 
-                <span class="badge rounded-pill @(hasLayout
+                <span class="badge rounded-pill @(hasLayout || album.Chapters.Count > 0
                                     ? "text-bg-success"
                                     : "text-bg-secondary") flex-shrink-0">
-                    <i class="bi @(hasLayout
+                    <i class="bi @(hasLayout || album.Chapters.Count > 0
                                         ? "bi-check-circle"
                                         : "bi-layout-text-window-reverse") me-1"></i>
-                    @(hasLayout ? "Layout ready" : "No layout")
+                    @(hasLayout ? "Layout ready" : album.Chapters.Count > 0 ? "Chapters ready" : "No layout")
                 </span>
             </div>
 
             <!-- Description -->
             @if (!string.IsNullOrWhiteSpace(album.FullDescription))
             {
-               var layout = Catalog.GetLayout(album.Id);
-               var coverPhotoId = layout?.CoverPhotoId;
                 <p class="album-description text-secondary mb-4">
                     @album.FullDescription
                 </p>
-                <p>
-                     @if (!string.IsNullOrWhiteSpace(coverPhotoId))
-                            {
-                                <img class="card-img-top" src="albums/@album.Id/photos/@coverPhotoId/content" alt="Cover for @album.Name" style="max-width: 240px; max-height:240px; object-fit: cover;" />
-                            }
-                            else
-                            {
-                                <div class="d-flex align-items-center justify-content-center bg-light text-muted" style="height: 220px;">No cover photo</div>
-                            }
-                </p>
             }
 
-            <hr class="album-divider" />
+            <div class="album-cover-actions">
+                <div class="album-cover-preview">
+                @if (!string.IsNullOrWhiteSpace(coverPhotoId))
+                {
+                    <img src="/albums/@album.Id/photos/@coverPhotoId/thumbnail" alt="" />
+                }
+                else
+                {
+                    <span class="album-photo-search-no-cover">No cover photo</span>
+                }
+                </div>
+               
+                <a class="album-photo-search-label" href="/albums/@album.Id/photos" aria-label="Search photos in @album.Name">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    Search photos
+                </a>
+            </div>
+            @if (canEdit)
+            {
+                <details class="album-cover-picker mb-4">
+                    <summary>Choose cover photo</summary>
+                    @if (coverPhotos.Count > 0)
+                    {
+                        <div class="album-cover-picker-options" aria-label="Cover photo options">
+                            @foreach (var photo in coverPhotos)
+                            {
+                                <button type="button"
+                                        class="album-cover-picker-option @(coverPhotoId == photo.Id ? "selected" : "")"
+                                        title="@photo.OriginalFileName"
+                                        aria-label="Set @photo.OriginalFileName as the cover photo"
+                                        aria-pressed="@(coverPhotoId == photo.Id)"
+                                        disabled="@isSavingCover"
+                                        @onclick="() => SetCoverPhotoAsync(photo.Id)">
+                                    <img src="/albums/@album.Id/photos/@photo.Id/thumbnail"
+                                         alt=""
+                                         loading="lazy" />
+                                </button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="small text-muted mb-0">Upload photos before selecting a cover.</p>
+                    }
+                    @if (isSavingCover)
+                    {
+                        <span class="small text-muted">Saving cover photo...</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(coverPhotoError))
+                    {
+                        <div class="small text-danger" role="alert">@coverPhotoError</div>
+                    }
+                </details>
+            }
+
+             <section class="album-meta-section">
+             @foreach (var field in SelectedAlbumType.AlbumFields)
+                {                                       
+                    var fieldValue = @GetMetadataValue(field.Id);
+                   
+                    @if (!string.IsNullOrWhiteSpace(fieldValue))
+                    {
+                         <div class="row album-meta-row"> 
+                            <div class="col-12 col-md-6" @key="field.Id">
+                                <label class="meta-label">@field.Label</label>:
+                                <label class="meta-value" id="@($"album-metadata-{field.Id}")">@fieldValue</label>
+
+                                @if (!string.IsNullOrWhiteSpace(field.Unit))
+                                {
+                                    <span class="form-text">@field.Unit</span>
+                                }
+                            </div>
+                         </div>
+                    }                  
+
+                }
+            </section>
+            
 
             <!-- Metadata -->
             <div class="row g-3 album-meta">
@@ -235,35 +305,136 @@ else
     </div>
 }
 
+@if (showDeleteConfirmation && album is not null)
+{
+    <div class="album-delete-backdrop" role="presentation" @onclick="CancelDelete">
+        <section class="album-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-album-title" @onclick:stopPropagation="true">
+            <div class="album-delete-dialog-header">
+                <h2 id="delete-album-title">Delete album?</h2>
+                <button type="button" class="album-delete-close" aria-label="Cancel deletion" disabled="@isDeletingAlbum" @onclick="CancelDelete">×</button>
+            </div>
+
+            <div class="album-delete-summary">
+                @if (deleteCoverPhotoId is not null)
+                {
+                    <img src="/albums/@album.Id/photos/@deleteCoverPhotoId/content" alt="Cover for @album.Name" />
+                }
+                else
+                {
+                    <div class="album-delete-no-cover">No cover photo</div>
+                }
+                <div>
+                    <h3>@album.Name</h3>
+                    <p>@deletePhotos.Count photo@(deletePhotos.Count == 1 ? "" : "s")</p>
+                </div>
+            </div>
+
+            <p>This will permanently delete the album and its photos.</p>
+
+            @if (!string.IsNullOrWhiteSpace(deleteError))
+            {
+                <div class="alert alert-danger" role="alert">@deleteError</div>
+            }
+
+            <div class="album-delete-actions">
+                <button type="button" class="btn btn-outline-secondary" disabled="@isDeletingAlbum" @onclick="CancelDelete">Cancel</button>
+                <button type="button" class="btn btn-danger" disabled="@isDeletingAlbum" @onclick="DeleteAsync">
+                    @(isDeletingAlbum ? "Deleting…" : "Delete album")
+                </button>
+            </div>
+        </section>
+    </div>
+}
+
 @code {
     [Parameter]
     public string Id { get; set; } = string.Empty;
 
     private Album? album;
+    private bool isLoading = true;
     private bool hasLayout;
+    private string? coverPhotoId;
+    private IReadOnlyList<AlbumPhoto> coverPhotos = [];
+    private bool isSavingCover;
+    private string? coverPhotoError;
     private bool canEdit;
     private string? shareUrl;
     private bool shareCopied;
     private string? deleteError;
+    private bool showDeleteConfirmation;
+    private bool isDeletingAlbum;
+    private IReadOnlyList<AlbumPhoto> deletePhotos = [];
+    private string? deleteCoverPhotoId;
 
     protected override async Task OnInitializedAsync()
     {
-        album = Catalog.Get(Id);
-        hasLayout = album is not null && Catalog.HasLayout(Id);
-
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        canEdit = CurrentUserHelper.GetUserId(authState.User) == album?.UserId;
-        if (canEdit && album is not null && hasLayout)
+        try
         {
-            var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
-            Catalog.EnsureShareLink(album);
-            if (shareLinkCreated)
-            {
-                PhotoItTelemetry.RecordShareCreated();
-                Logger.LogInformation("Album share link created. AlbumId: {AlbumId}", album.Id);
-            }
+            album = await Catalog.GetAsync(Id);
+            if (album is null)
+                return;
 
-            shareUrl = $"{Navigation.BaseUri.TrimEnd('/')}/sharedalbum/{album.ShareSlug}/{album.ShareSeed}";
+            var layout = await Catalog.GetLayoutAsync(Id);
+            hasLayout = layout is not null;
+            coverPhotoId = layout?.CoverPhotoId;
+
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            canEdit = CurrentUserHelper.GetUserId(authState.User) == album.UserId;
+            if (canEdit)
+            {
+                coverPhotos = (await Catalog.ListPhotosAsync(Id))
+                    .Where(photo => !PhotoType.IsVideo(photo))
+                    .ToList();
+                var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
+                await Catalog.EnsureShareLinkAsync(album);
+                if (shareLinkCreated)
+                {
+                    PhotoItTelemetry.RecordShareCreated();
+                    Logger.LogInformation("Album share link created. AlbumId: {AlbumId}", album.Id);
+                }
+
+                shareUrl = $"{Navigation.BaseUri.TrimEnd('/')}/sharedalbum/{album.ShareSlug}/{album.ShareSeed}";
+            }
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+     private AlbumTypeDefinition SelectedAlbumType => AlbumTypeCatalog.Get(album.AlbumType);
+
+     private string GetMetadataValue(string fieldId) =>
+        AlbumTypeCatalog.GetValue(album.Metadata, album.AlbumType, fieldId) ?? string.Empty;
+
+    private async Task SetCoverPhotoAsync(string photoId)
+    {
+        if (album is null || !canEdit || coverPhotos.All(photo => photo.Id != photoId))
+            return;
+
+        isSavingCover = true;
+        coverPhotoError = null;
+        try
+        {
+            var layout = await Catalog.GetLayoutAsync(album.Id) ?? new ViewableAlbumLayout
+            {
+                AlbumId = album.Id,
+                Title = album.Name,
+                Subtitle = album.FullDescription,
+            };
+            layout.CoverPhotoId = photoId;
+            await Catalog.SaveLayoutAsync(layout);
+            coverPhotoId = photoId;
+            hasLayout = true;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Could not set album cover photo. AlbumId: {AlbumId}, PhotoId: {PhotoId}", album.Id, photoId);
+            coverPhotoError = "Could not save the cover photo.";
+        }
+        finally
+        {
+            isSavingCover = false;
         }
     }
 
@@ -276,13 +447,56 @@ else
         shareCopied = true;
     }
 
-    private Task DeleteAsync()
+    private async Task ShowDeleteConfirmation()
     {
-        using var activity = PhotoItTelemetry.ActivitySource.StartActivity("album.delete");
+        if (album is null)
+            return;
+
         deleteError = null;
         try
         {
-            if (Catalog.Delete(Id))
+            deletePhotos = await Catalog.ListPhotosAsync(Id);
+            var coverPhotoId = (await Catalog.GetLayoutAsync(Id))?.CoverPhotoId;
+            deleteCoverPhotoId = deletePhotos.FirstOrDefault(photo => photo.Id == coverPhotoId)?.Id;
+            showDeleteConfirmation = true;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Could not load album details for deletion confirmation. AlbumId: {AlbumId}", Id);
+            deleteError = "The album could not be prepared for deletion. Please try again.";
+        }
+    }
+
+    private void CancelDelete()
+    {
+        if (isDeletingAlbum)
+            return;
+
+        showDeleteConfirmation = false;
+        deleteError = null;
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (album is null || isDeletingAlbum)
+            return;
+
+        using var activity = PhotoItTelemetry.ActivitySource.StartActivity("album.delete");
+        deleteError = null;
+        isDeletingAlbum = true;
+        var storageDeletionComplete = false;
+        try
+        {
+            var blobNames = deletePhotos
+                .SelectMany(photo => new[] { photo.BlobName, photo.ThumbnailBlobName })
+                .Where(blobName => !string.IsNullOrWhiteSpace(blobName))
+                .Distinct(StringComparer.Ordinal);
+
+            foreach (var blobName in blobNames)
+                await Storage.DeleteAsync(blobName!);
+
+            storageDeletionComplete = true;
+            if (await Catalog.DeleteAsync(Id))
             {
                 PhotoItTelemetry.RecordAlbumDeleted();
                 Logger.LogInformation("Album deleted. AlbumId: {AlbumId}", Id);
@@ -291,16 +505,20 @@ else
             else
             {
                 Logger.LogWarning("Album deletion failed because the album was not found. AlbumId: {AlbumId}", Id);
-                deleteError = "The album could not be deleted because it was not found.";
+                deleteError = "The album files were removed, but the album could not be found in the database.";
             }
         }
         catch (Exception exception)
         {
             activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "Album deletion failed");
             Logger.LogError(exception, "Album deletion failed. AlbumId: {AlbumId}", Id);
-            deleteError = "The album could not be deleted. Please try again.";
+            deleteError = storageDeletionComplete
+                ? "The album files were removed, but its database records could not be deleted. Please contact support."
+                : "Some album files could not be deleted from storage. The album and its database records were not deleted; please try again.";
         }
-
-        return Task.CompletedTask;
+        finally
+        {
+            isDeletingAlbum = false;
+        }
     }
 }

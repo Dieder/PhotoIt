@@ -13,7 +13,6 @@ namespace PhotoIt.Data
         public double AspectRatio { get; set; }          // width / height
         public string ExampleSize { get; set; } = string.Empty;
 
-        // Required by LiteDB when materializing PhotoType from persisted PhotoSlot data.
         public PhotoType()
         {
         }

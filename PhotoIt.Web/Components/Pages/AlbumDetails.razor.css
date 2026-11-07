@@ -7,7 +7,7 @@
 
 .album-card {
     border: 0.15rem solid blue !important;
-    background-color: aliceblue;
+    background-color: honeydew;
     margin-top: 3rem;
     border-radius: 1rem;
 }
@@ -57,6 +57,9 @@
         border-color: #dc3545;
     }
 
+.meta-item {
+    padding-top: 0.15rem;
+}
 .meta-value {
     color: #343a40;
     font-weight: 500;
@@ -84,6 +87,108 @@
     transition: background-color 0.3s ease;
 }
 
+.album-cover-actions {
+    
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 0 0 1rem;
+}
+
+.album-cover-preview {
+    position: relative;
+    width: 100%;
+    min-height: 24rem;
+    flex: 1 1 auto;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    border-radius: .8rem;
+    color: #fff;
+    background: linear-gradient(135deg, #637b85, #26343b 70%, #b87d55);
+    box-shadow: 0 .4rem 1.2rem rgb(0 0 0 / 15%);
+}
+
+.album-cover-preview > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform .2s ease;
+}
+
+.album-cover-preview::after {
+    position: absolute;
+    inset: 0;
+    content: "";
+    background: linear-gradient(180deg, rgb(0 0 0 / 4%) 25%, rgb(0 0 0 / 55%) 100%);
+}
+
+.album-photo-search-no-cover {
+    color: rgb(255 255 255 / 82%);
+}
+
+.album-photo-search-label {
+    flex: 0 0 auto;
+    padding: .55rem .85rem;
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    border: 1px solid rgb(255 255 255 / 45%);
+    border-radius: 999px;
+    color: #fff;
+    background: rgb(23 33 43 / 78%);
+    font-weight: 600;
+}
+
+.album-photo-search-label:hover {
+    color: #fff;
+    background: #17212b;
+}
+
+.album-cover-picker {
+    width: min(100%, 24rem);
+}
+
+.album-cover-picker summary {
+    cursor: pointer;
+    margin-bottom: .75rem;
+}
+
+.album-cover-picker-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+    gap: .5rem;
+    margin-bottom: .5rem;
+}
+
+.album-cover-picker-option {
+    padding: 0;
+    overflow: hidden;
+    aspect-ratio: 1;
+    border: 2px solid transparent;
+    border-radius: .45rem;
+    background: #e9ecef;
+    cursor: pointer;
+}
+
+.album-cover-picker-option.selected {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 .15rem rgb(13 110 253 / 18%);
+}
+
+.album-cover-picker-option:disabled {
+    cursor: wait;
+    opacity: .65;
+}
+
+.album-cover-picker-option img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 .theme-img {
     max-width: 2rem;
     max-height: 2rem;
@@ -93,4 +198,106 @@
     min-width: 2rem;
     min-height: 2rem;
     background-color: red;
+}
+
+.album-delete-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgb(0 0 0 / 55%);
+}
+
+.album-delete-dialog {
+    width: min(100%, 32rem);
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    background: white;
+    box-shadow: 0 1rem 3rem rgb(0 0 0 / 25%);
+}
+
+.album-delete-dialog-header,
+.album-delete-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.album-delete-dialog-header h2,
+.album-delete-summary h3,
+.album-delete-summary p {
+    margin: 0;
+}
+
+.album-delete-dialog-header h2 {
+    font-size: 1.25rem;
+}
+
+.album-delete-close {
+    border: 0;
+    background: transparent;
+    color: #555;
+    font-size: 1.75rem;
+    line-height: 1;
+}
+
+.album-delete-summary {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.25rem 0;
+}
+
+.album-delete-summary img,
+.album-delete-no-cover {
+    width: 6rem;
+    height: 6rem;
+    flex: 0 0 6rem;
+    border-radius: 0.5rem;
+    object-fit: cover;
+}
+
+.album-delete-no-cover {
+    display: grid;
+    place-items: center;
+    padding: 0.5rem;
+    background: #f1f3f5;
+    color: #6c757d;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+.album-delete-summary h3 {
+    overflow-wrap: anywhere;
+    font-size: 1.1rem;
+}
+
+.album-delete-summary p {
+    margin-top: 0.35rem;
+    color: #6c757d;
+}
+
+.album-delete-actions {
+    justify-content: flex-end;
+    margin-top: 1.25rem;
+}
+
+.album-meta-section {
+    border-top: 0.15rem solid blue;
+    border-radius: 0.1rem;
+}
+
+.album-meta-row {
+    display: flex;    
+    margin: 0.10rem;
+    border-bottom: solid 0.15rem blue;
+    flex-direction: row;
+}
+
+.meta-label {
+    font-weight:800;
 }

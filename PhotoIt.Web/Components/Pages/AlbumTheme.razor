@@ -222,7 +222,7 @@
             ImagePath = null
         };
         
-        SaveThemeAndNavigate();
+        await SaveThemeAndNavigateAsync();
     }
 
     private async Task SelectImage(string url)
@@ -233,16 +233,16 @@
             ImagePath = url
         };
 
-        SaveThemeAndNavigate();
+        await SaveThemeAndNavigateAsync();
     }
 
-    private void SaveThemeAndNavigate()
+    private async Task SaveThemeAndNavigateAsync()
     {
         using var activity = PhotoItTelemetry.ActivitySource.StartActivity("album.theme.save");
         activity?.SetTag("album.id", Id);
         try
         {
-            Catalog.UpdateAlbumBackground(Id, Value);
+            await Catalog.UpdateAlbumBackgroundAsync(Id, Value);
             PhotoItTelemetry.RecordAlbumSave(true);
             Logger.LogInformation("Album theme saved. AlbumId: {AlbumId}", Id);
             NavigationManager.NavigateTo($"/albums/{Id}");

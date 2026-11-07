@@ -2,7 +2,12 @@
 @rendermode InteractiveServer
 @using PhotoIt.Data
 @using PhotoIt.ServiceDefaults
+@using Microsoft.AspNetCore.Components.Forms
+@using PhotoIt.AiOrchestration
 @inject AlbumCatalog Catalog
+@inject AzurePhotoStorage Storage
+@inject PhotoThumbnailService Thumbnails
+@inject PhotoIndexQueue IndexQueue
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
@@ -41,19 +46,71 @@ else
         @foreach (var album in albums)
         {
             <div class="col">
-                <article class="card h-100 shadow-sm">
-                            @if (coverPhotoIds.TryGetValue(album.Id, out var coverPhotoId))
-                            {
-                                <img class="card-img-top" src="albums/@album.Id/photos/@coverPhotoId/content" alt="Cover for @album.Name" style="height: 220px; object-fit: cover;" />
-                            }
-                            else
-                            {
-                                <div class="d-flex align-items-center justify-content-center bg-light text-muted" style="height: 220px;">No cover photo</div>
-                            }
+                <article class="card h-100 shadow-sm album-card">
+                    @if (coverPhotoIds.TryGetValue(album.Id, out var coverPhotoId))
+                    {
+
+                        <div class="album-cover-frame">
+                            <img class="card-img-top @(IsPortraitCover(album.Id) ? "album-cover-portrait" : "")"
+                                 src="@GetThumbnailUrl(album.Id, coverPhotoId)"
+                                 alt="Cover for @album.Name"
+                                 style="height: 220px; object-fit: @(IsPortraitCover(album.Id) ? "contain" : "cover");" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex align-items-center justify-content-center bg-light text-muted" style="height: 220px;">No cover photo</div>
+                    }
                     <div class="card-body">
                         <p class="text-muted small mb-2">@album.ImageFolderName</p>
                         <h2 class="h4 card-title">@album.Name</h2>
                         <p class="card-text text-muted">@Truncate(album.FullDescription)</p>
+                        @if (currentUserId == album.UserId)
+                        {
+                            <details class="cover-photo-picker mt-3">
+                                <summary>Choose or upload cover photo</summary>
+                                @if (albumPhotos.TryGetValue(album.Id, out var selectablePhotos) && selectablePhotos.Count > 0)
+                                {
+                                    <div class="cover-photo-options" aria-label="Cover photo options for @album.Name">
+                                        @foreach (var photo in selectablePhotos)
+                                        {
+                                            <button class="cover-photo-option @(coverPhotoIds.GetValueOrDefault(album.Id) == photo.Id ? "selected" : "")"
+                                                    type="button"
+                                                    title="@photo.OriginalFileName"
+                                                    aria-label="Set @photo.OriginalFileName as the cover photo"
+                                                    aria-pressed="@(coverPhotoIds.GetValueOrDefault(album.Id) == photo.Id)"
+                                                    disabled="@(savingCoverAlbumId == album.Id || uploadingCoverAlbumId == album.Id)"
+                                                    @onclick="() => SetCoverPhotoAsync(album, photo.Id)">
+                                                <img src="albums/@album.Id/photos/@photo.Id/thumbnail"
+                                                     alt=""
+                                                     loading="lazy" />
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <p class="small text-muted mt-2 mb-2">No photos yet. Upload one to use it as this album's cover.</p>
+                                }
+                                <label class="form-label small mb-1" for="cover-upload-@album.Id">Upload one photo</label>
+                                <InputFile id="@($"cover-upload-{album.Id}")"
+                                           accept="image/*,.rw2"
+                                           disabled="@(savingCoverAlbumId == album.Id || uploadingCoverAlbumId == album.Id)"
+                                           OnChange="args => UploadCoverPhotoAsync(album, args)" />
+                                @if (uploadingCoverAlbumId == album.Id)
+                                {
+                                    <span class="small text-muted">Uploading cover photo...</span>
+                                }
+                                @if (savingCoverAlbumId == album.Id)
+                                {
+                                    <span class="small text-muted">Saving cover photo...</span>
+                                }
+                                @if (coverPhotoErrors.TryGetValue(album.Id, out var coverError))
+                                {
+                                    <span class="small text-danger">@coverError</span>
+                                }
+                            </details>
+                        }
                         @if (shareUrls.TryGetValue(album.Id, out var shareUrl))
                         {
                             <label class="form-label small mb-1" for="share-link-@album.Id">Share album</label>
@@ -78,39 +135,234 @@ else
 }
 
 @code {
+    private static readonly HashSet<string> SupportedCoverPhotoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".rw2"
+    };
+
     private IReadOnlyList<Album> albums = [];
     private bool isAuthenticated;
+    private string? currentUserId;
     private readonly Dictionary<string, string> shareUrls = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> coverPhotoIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<AlbumPhoto>> albumPhotos = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, AlbumPhoto> coverPhotos = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> coverPhotoErrors = new(StringComparer.OrdinalIgnoreCase);
     private string? copiedAlbumId;
+    private string? savingCoverAlbumId;
+    private string? uploadingCoverAlbumId;
+
+    private string GetThumbnailUrl(string albumId, string photoId) => $"/albums/{albumId}/photos/{photoId}/thumbnail";
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         isAuthenticated = authState.User?.Identity?.IsAuthenticated ?? false;
-        var currentUserId = CurrentUserHelper.GetUserId(authState.User);
-        albums = Catalog.List();
+        currentUserId = CurrentUserHelper.GetUserId(authState.User);
+        albums = await Catalog.ListAsync();
 
         foreach (var album in albums)
         {
-            var layout = Catalog.GetLayout(album.Id);
+            var layout = await Catalog.GetLayoutAsync(album.Id);
             if (!string.IsNullOrWhiteSpace(layout?.CoverPhotoId))
-                coverPhotoIds[album.Id] = layout.CoverPhotoId;
-
-            if (isAuthenticated && currentUserId == album.UserId && layout is not null)
             {
-                var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
-                Catalog.EnsureShareLink(album);
-                if (shareLinkCreated)
-                {
-                    PhotoItTelemetry.RecordShareCreated();
-                    Logger.LogInformation("Album share link created. AlbumId: {AlbumId}", album.Id);
-                }
+                coverPhotoIds[album.Id] = layout.CoverPhotoId;
+                var coverPhoto = await Catalog.GetPhotoAsync(album.Id, layout.CoverPhotoId);
+                if (coverPhoto is not null)
+                    coverPhotos[album.Id] = coverPhoto;
+            }
 
-                shareUrls[album.Id] = $"{Navigation.BaseUri.TrimEnd('/')}/sharedalbum/{album.ShareSlug}/{album.ShareSeed}";
+            if (isAuthenticated && currentUserId == album.UserId)
+            {
+                albumPhotos[album.Id] = (await Catalog.ListPhotosAsync(album.Id))
+                    .Where(photo => !PhotoType.IsVideo(photo))
+                    .ToArray();
+
+                if (layout is not null)
+                {
+                    var shareLinkCreated = string.IsNullOrWhiteSpace(album.ShareSlug) || album.ShareSeed <= 0;
+                    await Catalog.EnsureShareLinkAsync(album);
+                    if (shareLinkCreated)
+                    {
+                        PhotoItTelemetry.RecordShareCreated();
+                        Logger.LogInformation("Album share link created. AlbumId: {AlbumId}", album.Id);
+                    }
+
+                    shareUrls[album.Id] = $"{Navigation.BaseUri.TrimEnd('/')}/sharedalbum/{album.ShareSlug}/{album.ShareSeed}";
+                }
             }
         }
     }
+
+    private bool IsPortraitCover(string albumId) =>
+        coverPhotos.TryGetValue(albumId, out var coverPhoto)
+        && coverPhoto.PixelHeight.GetValueOrDefault() > coverPhoto.PixelWidth.GetValueOrDefault();
+
+    private async Task SetCoverPhotoAsync(Album album, string photoId)
+    {
+        if (currentUserId != album.UserId ||
+            !albumPhotos.TryGetValue(album.Id, out var photos) ||
+            photos.All(photo => photo.Id != photoId))
+            return;
+
+        savingCoverAlbumId = album.Id;
+        coverPhotoErrors.Remove(album.Id);
+        try
+        {
+            var layout = await Catalog.GetLayoutAsync(album.Id) ?? new ViewableAlbumLayout
+            {
+                AlbumId = album.Id,
+                Title = album.Name
+            };
+            layout.CoverPhotoId = photoId;
+            await Catalog.SaveLayoutAsync(layout);
+            coverPhotoIds[album.Id] = photoId;
+            coverPhotos[album.Id] = photos.First(photo => photo.Id == photoId);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Could not set cover photo. AlbumId: {AlbumId}, PhotoId: {PhotoId}", album.Id, photoId);
+            coverPhotoErrors[album.Id] = "Could not save the cover photo.";
+        }
+        finally
+        {
+            savingCoverAlbumId = null;
+        }
+    }
+
+    private async Task UploadCoverPhotoAsync(Album album, InputFileChangeEventArgs args)
+    {
+        if (currentUserId != album.UserId)
+            return;
+
+        var files = args.GetMultipleFiles(1);
+        if (files.Count == 0)
+            return;
+
+        var file = files[0];
+        var extension = Path.GetExtension(file.Name);
+        if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ||
+            (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
+             !SupportedCoverPhotoExtensions.Contains(extension)))
+        {
+            coverPhotoErrors[album.Id] = "Select one image file.";
+            return;
+        }
+
+        uploadingCoverAlbumId = album.Id;
+        coverPhotoErrors.Remove(album.Id);
+        string? uploadedBlobName = null;
+        string? uploadedThumbnailBlobName = null;
+        var photoPersisted = false;
+        try
+        {
+            await using var content = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
+            using var memory = new MemoryStream();
+            await content.CopyToAsync(memory);
+            var bytes = memory.ToArray();
+            var metadata = PhotoMetadataReader.Extract(bytes);
+            var photo = new AlbumPhoto
+            {
+                UserId = album.UserId,
+                AlbumId = album.Id,
+                OriginalFileName = file.Name,
+                ContentType = string.IsNullOrWhiteSpace(file.ContentType)
+                    ? GetCoverPhotoContentType(extension)
+                    : file.ContentType,
+                Length = file.Size,
+                PixelWidth = metadata.PixelWidth,
+                PixelHeight = metadata.PixelHeight,
+                UploadedUtc = DateTime.UtcNow,
+                DateTakenUtc = metadata.DateTakenUtc,
+                Latitude = metadata.Latitude,
+                Longitude = metadata.Longitude,
+                CameraMake = metadata.CameraMake,
+                CameraModel = metadata.CameraModel,
+                LensModel = metadata.LensModel,
+                FocalLength = metadata.FocalLength,
+                FocalLength35Mm = metadata.FocalLength35Mm,
+                SubjectDistance = metadata.SubjectDistance,
+                Flash = metadata.Flash,
+                Dimensions = metadata.Dimensions,
+                ExposureTime = metadata.ExposureTime,
+                FNumber = metadata.FNumber,
+                IsoSpeed = metadata.IsoSpeed,
+                ExposureProgram = metadata.ExposureProgram,
+                WhiteBalance = metadata.WhiteBalance
+            };
+
+            var blobExtension = string.IsNullOrWhiteSpace(extension) ? ".jpg" : extension.ToLowerInvariant();
+            uploadedBlobName = $"{album.ImageFolderName}/{Guid.NewGuid():N}{blobExtension}";
+            await Storage.UploadAsync(uploadedBlobName, new MemoryStream(bytes), photo.ContentType);
+            photo.BlobName = uploadedBlobName;
+
+            try
+            {
+                var thumbnailBytes = Thumbnails.Create(bytes);
+                uploadedThumbnailBlobName = $"{album.ImageFolderName}/thumbnails/{photo.Id}.jpg";
+                await Storage.UploadAsync(
+                    uploadedThumbnailBlobName,
+                    new MemoryStream(thumbnailBytes),
+                    "image/jpeg",
+                    overwrite: true);
+                photo.ThumbnailBlobName = uploadedThumbnailBlobName;
+            }
+            catch (ImageMagick.MagickException exception)
+            {
+                photo.ThumbnailUnavailable = true;
+                Logger.LogWarning(exception, "Could not create cover photo thumbnail. AlbumId: {AlbumId}", album.Id);
+            }
+
+            await Catalog.AddPhotoAsync(photo);
+            photoPersisted = true;
+            albumPhotos[album.Id] = albumPhotos.GetValueOrDefault(album.Id, [])
+                .Append(photo)
+                .ToArray();
+            IndexQueue.Enqueue(new AlbumPhotoIndexRequest(album.Id, photo.Id));
+
+            var layout = await Catalog.GetLayoutAsync(album.Id) ?? new ViewableAlbumLayout
+            {
+                AlbumId = album.Id,
+                Title = album.Name
+            };
+            layout.CoverPhotoId = photo.Id;
+            await Catalog.SaveLayoutAsync(layout);
+            await Catalog.TouchAsync(album.Id);
+            coverPhotoIds[album.Id] = photo.Id;
+            coverPhotos[album.Id] = photo;
+        }
+        catch (Exception exception)
+        {
+            if (!photoPersisted)
+            {
+                if (uploadedThumbnailBlobName is not null)
+                    await Storage.DeleteAsync(uploadedThumbnailBlobName);
+                if (uploadedBlobName is not null)
+                    await Storage.DeleteAsync(uploadedBlobName);
+            }
+
+            Logger.LogError(exception, "Could not upload cover photo. AlbumId: {AlbumId}", album.Id);
+            coverPhotoErrors[album.Id] = photoPersisted
+                ? "The photo uploaded, but could not be set as the cover."
+                : "Could not upload the cover photo.";
+        }
+        finally
+        {
+            uploadingCoverAlbumId = null;
+        }
+    }
+
+    private static string GetCoverPhotoContentType(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".png" => "image/png",
+        ".gif" => "image/gif",
+        ".bmp" => "image/bmp",
+        ".tif" or ".tiff" => "image/tiff",
+        ".webp" => "image/webp",
+        ".rw2" => "image/x-panasonic-rw2",
+        _ => "application/octet-stream"
+    };
 
     private async Task CopyShareLinkAsync(string albumId, string shareUrl)
     {

@@ -1,6 +1,22 @@
 {
-  "universe_usage_history": [],
-  "assignment_cast_snapshots": {},
-  "transaction_id": "1e574468-2766-44af-bc43-433f4d1e5954",
-  "registry_revision": 1
+  "universe_usage_history": [
+    {
+      "universe": "descriptive",
+      "used_at": "2026-11-04T09:20:04.567+01:00"
+    }
+  ],
+  "assignment_cast_snapshots": {
+    "5ff8bdda-f866-4279-a757-34a2c202cba0": {
+      "universe": "descriptive",
+      "agents": ["lead", "backend", "tester", "frontend"],
+      "created_at": "2026-11-04T09:20:04.567+01:00"
+    },
+    "45a28746-9816-4516-81ca-9fcc6af68228": {
+      "universe": "descriptive",
+      "agents": ["lead", "backend", "tester", "frontend", "infra"],
+      "created_at": "2026-11-04T09:32:42+01:00"
+    }
+  },
+  "transaction_id": "45a28746-9816-4516-81ca-9fcc6af68228",
+  "registry_revision": 3
 }

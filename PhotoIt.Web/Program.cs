@@ -1,5 +1,4 @@
 using AiFoundryLocal;
-using LiteDB;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -10,11 +9,14 @@ using PhotoIt.Web.Components;
 using PhotoIt.Web.Components.Account;
 using PhotoIt.Web.Data;
 using Microsoft.Extensions.Http;
+using ImageMagick;
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString = builder.Configuration.GetConnectionString("AlbumWebContext") ?? throw new InvalidOperationException("Connection string 'AlbumWebContext' not found.");
+var connectionString = builder.Configuration["CosmosdbConnection"]
+    ?? throw new InvalidOperationException("Cosmos DB connection string 'CosmosdbConnection' not found. Configure Parameters:CosmosdbConnection in the AppHost user secrets.");
 
-builder.Services.AddDbContext<AlbumWebContext>(options => options.UseSqlite(connectionString));
+builder.Services.AddDbContextFactory<AlbumWebContext>(options =>
+    options.UseCosmos(connectionString, "PhotoIt"));
 
 // Add service defaults & Aspire client integrations.
 builder.AddServiceDefaults();
@@ -23,10 +25,10 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddOutputCache();
-builder.Services.AddSingleton<AlbumCatalog>(_ =>
-    new AlbumCatalog(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "albums.db")));
-builder.Services.AddSingleton<PhotoTagCatalog>(_ =>
-    new PhotoTagCatalog(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "photo-tags.db")));
+builder.Services.AddSingleton<IPhotoItContextFactory, AlbumWebContextFactory>();
+builder.Services.AddSingleton<AlbumCatalog>();
+builder.Services.AddSingleton<PhotoTagCatalog>();
+builder.Services.AddSingleton<PhotoThumbnailService>();
 
 builder.Services.AddHttpClient<NominatimClient>();
 
@@ -120,12 +122,71 @@ app.MapGet("/albums/{albumId}/photos/{photoId}/content", async (
     AzurePhotoStorage storage,
     CancellationToken ct) =>
 {
-    var photo = catalog.GetPhoto(albumId, photoId);
+    var photo = await catalog.GetPhotoAsync(albumId, photoId, ct);
     if (photo is null)
         return Results.NotFound();
 
     var download = await storage.DownloadAsync(photo.BlobName, ct);
     return Results.Stream(download.Content, download.ContentType, enableRangeProcessing: true);
+});
+
+app.MapPhotoUploadEndpoints();
+
+app.MapGet("/albums/{albumId}/photos/{photoId}/thumbnail", async (
+    string albumId,
+    string photoId,
+    AlbumCatalog catalog,
+    AzurePhotoStorage storage,
+    PhotoThumbnailService thumbnails,
+    ILogger<PhotoThumbnailService> logger,
+    HttpContext httpContext,
+    CancellationToken ct) =>
+{
+    httpContext.Response.Headers.CacheControl = "private, max-age=86400";
+    var photo = await catalog.GetPhotoAsync(albumId, photoId, ct);
+    if (photo is null)
+        return Results.NotFound();
+
+    if (photo.ThumbnailUnavailable)
+        return Results.Redirect($"/albums/{albumId}/photos/{photoId}/content");
+
+    if (!string.IsNullOrWhiteSpace(photo.ThumbnailBlobName))
+    {
+        var storedThumbnail = await storage.DownloadAsync(photo.ThumbnailBlobName, ct);
+        return Results.File(storedThumbnail.Content, storedThumbnail.ContentType, enableRangeProcessing: true);
+    }
+
+    var original = await storage.DownloadAsync(photo.BlobName, ct);
+    await using var originalContent = original.Content;
+    using var source = new MemoryStream();
+    await originalContent.CopyToAsync(source, ct);
+
+    byte[] thumbnail;
+    try
+    {
+        thumbnail = thumbnails.Create(source.ToArray());
+    }
+    catch (MagickException exception)
+    {
+        photo.ThumbnailUnavailable = true;
+        await catalog.UpdatePhotoAsync(photo, ct);
+        logger.LogWarning(exception, "Could not create photo thumbnail. AlbumId: {AlbumId}, MediaId: {MediaId}", albumId, photoId);
+        return Results.Redirect($"/albums/{albumId}/photos/{photoId}/content");
+    }
+
+    var separator = photo.BlobName.LastIndexOf('/');
+    var photoFolder = separator > 0 ? photo.BlobName[..separator] : albumId;
+    var thumbnailBlobName = $"{photoFolder}/thumbnails/{photoId}.jpg";
+    await storage.UploadAsync(
+        thumbnailBlobName,
+        new MemoryStream(thumbnail),
+        "image/jpeg",
+        ct,
+        overwrite: true);
+    photo.ThumbnailBlobName = thumbnailBlobName;
+    await catalog.UpdatePhotoAsync(photo, ct);
+
+    return Results.File(new MemoryStream(thumbnail), "image/jpeg", enableRangeProcessing: true);
 });
 
 app.MapRazorComponents<App>()
@@ -137,9 +198,9 @@ app.MapAdditionalIdentityEndpoints();;
 
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AlbumWebContext>();
-
-    db.Database.Migrate();
+    var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AlbumWebContext>>();
+    await using var db = await dbFactory.CreateDbContextAsync();
+    await db.Database.EnsureCreatedAsync();
 }
 
 app.Run();

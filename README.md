@@ -25,7 +25,7 @@ The solution is split into these main projects:
 | Project | Responsibility |
 | --- | --- |
 | `PhotoIt.Web` | Interactive Server Blazor UI, Identity, album/photo workflows, HTTP endpoints, and dependency registration. |
-| `PhotoIt.Data` | Album and layout models, LiteDB catalogs, photo metadata extraction, and Azure Blob Storage integration. |
+| `PhotoIt.Data` | Album and layout models, Cosmos DB-backed catalogs, photo metadata extraction, and Azure Blob Storage integration. |
 | `CleanCode.AiOrgestation` | Coordinates vision analysis with album data and runs the background photo-indexing queue. |
 | `AiFoundryLocal` | Local Phi-3 Vision ONNX Runtime GenAI inference and local-file indexing support. |
 | `PhotoIt.Core` | Shared route/geolocation services, including the Nominatim client. |
@@ -33,11 +33,12 @@ The solution is split into these main projects:
 | `PhotoIt.AppHost` | .NET Aspire host that launches the web app and API service together. |
 | `CleanCode.ApiService` | Separate minimal API project; its current endpoints are a sample root status and weather forecast, not the album or tagging API. |
 
-The web app uses SQLite via Entity Framework Core for Identity (`AlbumWebContext.db`) and LiteDB for album, photo, and layout data (`PhotoIt.Web/App_Data/albums.db`). The local file-tag catalog is configured at `PhotoIt.Web/App_Data/photo-tags.db`. Original album images are stored in Azure Blob Storage. Photo uploads enqueue work for a hosted service, which calls `PhotoVisionOrchestrator` and persists the resulting description and tags.
+The web app stores Identity, albums, photo metadata, layouts, and local file-tag records in Azure Cosmos DB through Entity Framework Core. The database is named `PhotoIt`; the app creates the database and containers at startup with `EnsureCreatedAsync`. Original album images and thumbnails remain in the configured Azure Blob Storage container. Photo uploads enqueue work for a hosted service, which calls `PhotoVisionOrchestrator` and persists the resulting description and tags. Existing SQLite and LiteDB files are not imported; configure an empty Cosmos DB database for this version.
 
 ## Requirements
 
 - .NET 10 SDK.
+- An Azure Cosmos DB account and its connection string.
 - An Azure Storage account with Blob data permissions for the app. The app creates the configured private container if it does not exist.
 - A local Phi-3 Vision model directory compatible with ONNX Runtime GenAI. Set its path before starting the web app.
 - Network access to OpenStreetMap Nominatim for place-name lookup in the route editor.
@@ -48,7 +49,8 @@ The web app reads settings from `PhotoIt.Web/appsettings.json`, environment vari
 
 | Setting | Required | Purpose |
 | --- | --- | --- |
-| `ConnectionStrings:AlbumWebContext` | Yes | SQLite connection string for Identity. Defaults to `Data Source=AlbumWebContext.db`. |
+| `Parameters:CosmosdbConnection` | Yes for AppHost | Cosmos DB connection string. AppHost passes this secret to the web app as `CosmosdbConnection`; the database name is `PhotoIt`. |
+| `CosmosdbConnection` | Yes when running `PhotoIt.Web` directly | Cosmos DB connection string used by Identity and all catalog data. |
 | `AzureStorage:AccountName` | Yes, unless derived from `AccountUri` | Azure Storage account name. |
 | `AzureStorage:AccountUri` | No | Blob service URI; if omitted, it is built from the account name. The account name can also be derived from this URI. |
 | `AzureStorage:ContainerName` | No | Blob container for photos. Defaults to `photos`. |
@@ -62,9 +64,6 @@ Example (replace the storage account and model path with values for your environ
 
 ```json
 {
-  "ConnectionStrings": {
-	"AlbumWebContext": "Data Source=AlbumWebContext.db"
-  },
   "AzureStorage": {
 	"AccountName": "<storage-account-name>",
 	"AccountUri": "https://<storage-account-name>.blob.core.windows.net/",
@@ -78,29 +77,36 @@ Example (replace the storage account and model path with values for your environ
 }
 ```
 
-For local development, set the model path without committing machine-specific values:
+For local development with Aspire, set the Cosmos DB connection string in AppHost user secrets and the model path in the web project user secrets:
 
 ```powershell
-dotnet user-secrets set "VisionModel:ModelDirectory" "C:\models\onnx_phi3_vision\cpu_and_mobile\cpu-int4-rtn-block-32-acc-level-4" --project PhotoIt.Web/PhotoIt.Web.csproj
+dotnet user-secrets set "Parameters:CosmosdbConnection" "<cosmos-db-connection-string>" --project PhotoIt.AppHost\PhotoIt.AppHost.csproj
+dotnet user-secrets set "VisionModel:ModelDirectory" "C:\models\onnx_phi3_vision\cpu_and_mobile\cpu-int4-rtn-block-32-acc-level-4" --project PhotoIt.Web\PhotoIt.Web.csproj
+```
+
+Cosmos DB uses `EnsureCreatedAsync` rather than relational EF Core migrations. To run the web project directly instead of through AppHost, set a `CosmosdbConnection` user secret on `PhotoIt.Web`:
+
+```powershell
+dotnet user-secrets set "CosmosdbConnection" "<cosmos-db-connection-string>" --project PhotoIt.Web\PhotoIt.Web.csproj
 ```
 
 If using a storage account key instead of `DefaultAzureCredential`, keep it out of source control and set it as a user secret:
 
 ```powershell
-dotnet user-secrets set "photostorageaccountkey" "<storage-account-key>" --project PhotoIt.Web/PhotoIt.Web.csproj
+dotnet user-secrets set "photostorageaccountkey" "<storage-account-key>" --project PhotoIt.Web\PhotoIt.Web.csproj
 ```
 
 `OpenRouteService` entries currently present in appsettings are not read by the application; route place lookup currently uses Nominatim. Google sign-in parameters are declared in the Aspire host, but the web project's current Google authentication registration still contains placeholder credential strings, so external Google sign-in needs that registration wired to configuration before use.
 
 ## Run locally
 
-1. Configure Azure Storage access and point `VisionModel:ModelDirectory` to a compatible local model directory.
+1. Configure `Parameters:CosmosdbConnection` in AppHost user secrets, Azure Storage access, and point `VisionModel:ModelDirectory` to a compatible local model directory.
 2. From the solution directory, run the Blazor application:
 
    ```powershell
-   dotnet run --project PhotoIt.Web/PhotoIt.Web.csproj
+   dotnet run --project PhotoIt.Web\PhotoIt.Web.csproj
    ```
 
    Alternatively, run `PhotoIt.AppHost` to launch the Aspire application host and its referenced services.
 
-The app applies its Identity SQLite migrations at startup. The Azure Blob container and local model are initialized during startup, so missing model files or unavailable/unauthorized Azure Storage can prevent the app from starting.
+The app creates the Cosmos DB database and containers at startup. The Azure Blob container and local model are also initialized during startup, so a missing database connection, model files, or available/authorized Azure Storage can prevent the app from starting.

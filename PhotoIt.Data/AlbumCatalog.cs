@@ -1,62 +1,52 @@
-using PhotoIt.Data;
-using LiteDB;
 using System.Security.Cryptography;
+using Microsoft.EntityFrameworkCore;
 
 namespace PhotoIt.Data;
 
-public sealed class AlbumCatalog : IDisposable
+public sealed class AlbumCatalog
 {
-    private readonly LiteDatabase _database;
-    private readonly ILiteCollection<Album> _albums;
-    private readonly ILiteCollection<AlbumPhoto> _photos;
-    private readonly ILiteCollection<ViewableAlbumLayout> _layouts;
+    private readonly IPhotoItContextFactory _contextFactory;
 
-    public AlbumCatalog(string databasePath)
+    public AlbumCatalog(IPhotoItContextFactory contextFactory)
     {
-        var directory = Path.GetDirectoryName(Path.GetFullPath(databasePath));
-        if (!string.IsNullOrWhiteSpace(directory))
-            Directory.CreateDirectory(directory);
-
-        _database = new LiteDatabase(databasePath);
-        _albums = _database.GetCollection<Album>("albums");
-        _photos = _database.GetCollection<AlbumPhoto>("albumPhotos");
-        _layouts = _database.GetCollection<ViewableAlbumLayout>("viewableAlbumLayouts");
-        _albums.EnsureIndex(album => album.ImageFolderName, unique: true);
-        _albums.EnsureIndex(album => album.Name);
-        _photos.EnsureIndex(photo => photo.AlbumId);
-        _layouts.EnsureIndex(layout => layout.AlbumId, unique: true);
+        _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
     }
 
-    public IReadOnlyList<Album> List()
+    public async Task<IReadOnlyList<Album>> ListAsync(CancellationToken ct = default)
     {
-        return _albums.Query()
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<Album>().AsNoTracking()
             .OrderByDescending(album => album.UpdatedUtc)
-            .ToList();
+            .ToListAsync(ct);
     }
 
-    public Album? Get(string id)
+    public async Task<Album?> GetAsync(string id, CancellationToken ct = default)
     {
-        return _albums.FindById(id);
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<Album>().AsNoTracking().FirstOrDefaultAsync(album => album.Id == id, ct);
     }
 
-    public string[] PhotoIds(string albumId)
+    public async Task<string[]> PhotoIdsAsync(string albumId, CancellationToken ct = default)
     {
-        return _photos.Query()
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<AlbumPhoto>().AsNoTracking()
             .Where(photo => photo.AlbumId == albumId)
             .Select(photo => photo.Id)
-            .ToArray();
+            .ToArrayAsync(ct);
     }
 
-    public Album? GetShared(string slug, int seed)
+    public async Task<Album?> GetSharedAsync(string slug, int seed, CancellationToken ct = default)
     {
         var normalizedSlug = NormalizeShareSlug(slug);
         if (string.IsNullOrWhiteSpace(normalizedSlug) || seed <= 0)
             return null;
 
-        return _albums.FindOne(album => album.ShareSlug == normalizedSlug && album.ShareSeed == seed);
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<Album>().AsNoTracking()
+            .FirstOrDefaultAsync(album => album.ShareSlug == normalizedSlug && album.ShareSeed == seed, ct);
     }
 
-    public void EnsureShareLink(Album album)
+    public async Task EnsureShareLinkAsync(Album album, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(album);
 
@@ -65,58 +55,101 @@ public sealed class AlbumCatalog : IDisposable
             return;
 
         album.ShareSlug = slug;
-        do
-        {
-            album.ShareSeed = RandomNumberGenerator.GetInt32(100_000, 1_000_000);
-        }
-        while (_albums.Exists(candidate => candidate.Id != album.Id && candidate.ShareSlug == album.ShareSlug && candidate.ShareSeed == album.ShareSeed));
+        await using var db = _contextFactory.CreateDbContext();
+        album.ShareSeed = RandomNumberGenerator.GetInt32(1, int.MaxValue);
 
-        _albums.Update(album);
+        db.Set<Album>().Update(album);
+        await db.SaveChangesAsync(ct);
     }
 
-    public bool ImageFolderNameExists(string imageFolderName, string? excludingId = null)
+    public async Task<bool> ImageFolderNameExistsAsync(string imageFolderName, CancellationToken ct = default)
     {
         var normalizedName = NormalizeFolderName(imageFolderName);
-        return _albums.FindAll().Any(album =>
-            string.Equals(album.ImageFolderName, normalizedName, StringComparison.Ordinal) &&
-            !string.Equals(album.Id, excludingId, StringComparison.OrdinalIgnoreCase));
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<Album>()
+            .FirstOrDefaultAsync(album => album.ImageFolderName == normalizedName, ct) is not null;
     }
 
-    public void Create(Album album)
+    public async Task CreateAsync(Album album, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(album);
         album.Id = Guid.NewGuid().ToString("N");
         album.CreatedUtc = DateTime.UtcNow;
         album.UpdatedUtc = album.CreatedUtc;
         album.ImageFolderName = $"ALBUM-{album.Id.ToUpperInvariant()}";
-        _albums.Insert(album);
+        await using var db = _contextFactory.CreateDbContext();
+        db.Set<Album>().Add(album);
+        await db.SaveChangesAsync(ct);
     }
 
-    public bool Update(Album album)
+    public async Task<bool> UpdateAsync(Album album, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(album);
         album.ImageFolderName = NormalizeFolderName(album.ImageFolderName);
         album.UpdatedUtc = DateTime.UtcNow;
-        return _albums.Update(album);
+        await using var db = _contextFactory.CreateDbContext();
+        var existing = await db.Set<Album>()
+            .Where(existing => existing.UserId == album.UserId)
+            .FirstOrDefaultAsync(existing => existing.Id == album.Id, ct);
+        if (existing is null)
+            return false;
+
+        var layout = await db.Set<ViewableAlbumLayout>().AsNoTracking()
+            .FirstOrDefaultAsync(candidate => candidate.AlbumId == album.Id, ct);
+        if (layout is not null)
+        {
+            var albumPhotoIds = await db.Set<AlbumPhoto>().AsNoTracking()
+                .Where(photo => photo.AlbumId == album.Id)
+                .Select(photo => photo.Id)
+                .ToListAsync(ct);
+            AlbumChapterPageRules.Validate(
+                album,
+                layout.Pages,
+                albumPhotoIds.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                layout.Pages.Count(page => string.IsNullOrWhiteSpace(page.ChapterId)));
+        }
+
+        AlbumGraphUpdater.CopyInto(existing, album);
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
-    public bool Delete(string id)
+    public async Task<bool> DeleteAsync(string id, CancellationToken ct = default)
     {
-        _photos.DeleteMany(photo => photo.AlbumId == id);
-        _layouts.Delete(id);
-        return _albums.Delete(id);
+        await using var db = _contextFactory.CreateDbContext();
+        var album = await db.Set<Album>().FirstOrDefaultAsync(candidate => candidate.Id == id, ct);
+        if (album is null)
+            return false;
+
+        var photos = await db.Set<AlbumPhoto>().Where(photo => photo.AlbumId == id).ToListAsync(ct);
+        var layout = await db.Set<ViewableAlbumLayout>().FirstOrDefaultAsync(layout => layout.AlbumId == id, ct);
+        db.RemoveRange(photos);
+        if (layout is not null)
+            db.Remove(layout);
+        db.Remove(album);
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
-    public IReadOnlyList<AlbumPhoto> ListPhotos(string albumId)
+    public async Task<IReadOnlyList<AlbumPhoto>> ListPhotosAsync(string albumId, CancellationToken ct = default)
     {
-        var photos = _photos.Find(photo => photo.AlbumId == albumId)
-            .OrderByDescending(photo => photo.DateTakenUtc.HasValue
-                ? photo.DateTakenUtc.Value.ToLocalTime()
-                : photo.UploadedUtc.ToLocalTime())
-            .ToList();
+        await using var db = _contextFactory.CreateDbContext();
+        var photos = await db.Set<AlbumPhoto>().Where(photo => photo.AlbumId == albumId)
+            .ToListAsync(ct);
+        photos = photos.OrderByDescending(photo => photo.DateTakenUtc ?? photo.UploadedUtc).ToList();
 
+        var changed = false;
         foreach (var photo in photos)
-            NormalizeLegacyAnalysis(photo);
+        {
+            if (NormalizeLegacyAnalysis(photo))
+            {
+                db.Update(photo);
+                changed = true;
+            }
+        }
+
+        if (changed)
+            await db.SaveChangesAsync(ct);
 
         return photos;
     }
@@ -135,56 +168,92 @@ public sealed class AlbumCatalog : IDisposable
             : uploadedUtc.ToLocalTime();
     }
 
-    public void AddPhoto(AlbumPhoto photo)
+    public async Task AddPhotoAsync(AlbumPhoto photo, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(photo);
-        _photos.Insert(photo);
+        await using var db = _contextFactory.CreateDbContext();
+        db.Set<AlbumPhoto>().Add(photo);
+        await db.SaveChangesAsync(ct);
     }
 
-    public AlbumPhoto? GetPhoto(string albumId, string photoId)
+    public async Task<AlbumPhoto?> GetPhotoAsync(string albumId, string photoId, CancellationToken ct = default)
     {
-        var photo = _photos.FindOne(photo => photo.AlbumId == albumId && photo.Id == photoId);
-        if (photo is not null)
-            NormalizeLegacyAnalysis(photo);
+        await using var db = _contextFactory.CreateDbContext();
+        var photo = await db.Set<AlbumPhoto>().FirstOrDefaultAsync(photo =>
+            photo.AlbumId == albumId && photo.Id == photoId, ct);
+        if (photo is not null && NormalizeLegacyAnalysis(photo))
+            await db.SaveChangesAsync(ct);
         return photo;
     }
 
-    public bool DeletePhoto(string id)
+    public async Task<bool> DeletePhotoAsync(string id, CancellationToken ct = default)
     {
-        return _photos.Delete(id);
+        await using var db = _contextFactory.CreateDbContext();
+        var photo = await db.Set<AlbumPhoto>().FirstOrDefaultAsync(existing => existing.Id == id, ct);
+        if (photo is null || await IsPhotoReferencedAsync(id, ct))
+            return false;
+
+        db.Remove(photo);
+        return await db.SaveChangesAsync(ct) > 0;
     }
 
-    public bool UpdatePhoto(AlbumPhoto photo)
+    public async Task<bool> IsPhotoReferencedAsync(string photoId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(photoId);
+
+        await using var db = _contextFactory.CreateDbContext();
+        var albums = await db.Set<Album>().AsNoTracking().ToListAsync(ct);
+        var layouts = await db.Set<ViewableAlbumLayout>().AsNoTracking().ToListAsync(ct);
+        return AlbumPhotoReferenceChecker.IsReferenced(photoId, albums, layouts);
+    }
+
+    public async Task<bool> UpdatePhotoAsync(AlbumPhoto photo, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(photo);
-        return _photos.Update(photo);
+        await using var db = _contextFactory.CreateDbContext();
+        var existing = await db.Set<AlbumPhoto>()
+            .Where(existing => existing.AlbumId == photo.AlbumId)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(existing => existing.Id == photo.Id, ct);
+        if (existing is null)
+            return false;
+
+        db.Set<AlbumPhoto>().Update(photo);
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
-    public void Touch(string albumId)
+    public async Task TouchAsync(string albumId, CancellationToken ct = default)
     {
-        var album = Get(albumId);
+        await using var db = _contextFactory.CreateDbContext();
+        var album = await db.Set<Album>().FirstOrDefaultAsync(album => album.Id == albumId, ct);
         if (album is null)
             return;
 
         album.UpdatedUtc = DateTime.UtcNow;
-        _albums.Update(album);
+        await db.SaveChangesAsync(ct);
     }
 
-    public ViewableAlbumLayout? GetLayout(string albumId)
+    public async Task<ViewableAlbumLayout?> GetLayoutAsync(string albumId, CancellationToken ct = default)
     {
-        var layout = _layouts.FindById(albumId);
+        await using var db = _contextFactory.CreateDbContext();
+        var layout = await db.Set<ViewableAlbumLayout>().AsNoTracking()
+            .FirstOrDefaultAsync(layout => layout.AlbumId == albumId, ct);
         if (layout is not null)
             NormalizeLayout(layout);
 
         return layout;
     }
 
-    public bool HasLayout(string albumId)
+    public async Task<bool> HasLayoutAsync(string albumId, CancellationToken ct = default)
     {
-        return _layouts.Exists(layout => layout.AlbumId == albumId);
+        await using var db = _contextFactory.CreateDbContext();
+        return await db.Set<ViewableAlbumLayout>()
+            .Where(layout => layout.AlbumId == albumId)
+            .FirstOrDefaultAsync(layout => layout.AlbumId == albumId, ct) is not null;
     }
 
-    public void SaveLayout(ViewableAlbumLayout layout)
+    public async Task SaveLayoutAsync(ViewableAlbumLayout layout, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(layout);
         if (string.IsNullOrWhiteSpace(layout.AlbumId))
@@ -192,18 +261,45 @@ public sealed class AlbumCatalog : IDisposable
 
         NormalizeLayout(layout);
         layout.UpdatedUtc = DateTime.UtcNow;
-        _layouts.Upsert(layout);
-        Touch(layout.AlbumId);
+        await using var db = _contextFactory.CreateDbContext();
+        var existing = await db.Set<ViewableAlbumLayout>()
+            .Where(candidate => candidate.AlbumId == layout.AlbumId)
+            .FirstOrDefaultAsync(candidate => candidate.AlbumId == layout.AlbumId, ct);
+        var albumForValidation = await db.Set<Album>().AsNoTracking()
+            .FirstOrDefaultAsync(candidate => candidate.Id == layout.AlbumId, ct);
+        if (albumForValidation is null)
+            throw new InvalidOperationException("The album for this layout could not be found.");
+
+        var albumPhotoIds = await db.Set<AlbumPhoto>().AsNoTracking()
+            .Where(photo => photo.AlbumId == layout.AlbumId)
+            .Select(photo => photo.Id)
+            .ToListAsync(ct);
+        AlbumChapterPageRules.Validate(
+            albumForValidation,
+            layout.Pages,
+            albumPhotoIds.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            existing?.Pages.Count(page => string.IsNullOrWhiteSpace(page.ChapterId)) ?? 0);
+
+        var layoutToSave = existing ?? new ViewableAlbumLayout { AlbumId = layout.AlbumId };
+        LayoutGraphUpdater.CopyInto(layoutToSave, layout);
+        if (existing is null)
+            db.Set<ViewableAlbumLayout>().Add(layoutToSave);
+
+        var album = await db.Set<Album>().FirstOrDefaultAsync(album => album.Id == layout.AlbumId, ct);
+        if (album is not null)
+            album.UpdatedUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
     }
 
-    public bool DeleteLayout(string albumId)
+    public async Task<bool> DeleteLayoutAsync(string albumId, CancellationToken ct = default)
     {
-        return _layouts.Delete(albumId);
-    }
+        await using var db = _contextFactory.CreateDbContext();
+        var layout = await db.Set<ViewableAlbumLayout>().FirstOrDefaultAsync(layout => layout.AlbumId == albumId, ct);
+        if (layout is null)
+            return false;
 
-    public void Dispose()
-    {
-        _database.Dispose();
+        db.Remove(layout);
+        return await db.SaveChangesAsync(ct) > 0;
     }
 
     private static string NormalizeFolderName(string value)
@@ -211,18 +307,20 @@ public sealed class AlbumCatalog : IDisposable
         return value.Trim().ToUpperInvariant();
     }
 
-    public void UpdateAlbumBackground(string id, BackGroundFill fill)
+    public async Task UpdateAlbumBackgroundAsync(string id, BackGroundFill fill, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(id);
         ArgumentNullException.ThrowIfNull(fill);
-        var album = Get(id);
+        await using var db = _contextFactory.CreateDbContext();
+        var album = await db.Set<Album>().FirstOrDefaultAsync(album => album.Id == id, ct);
         if (album is null)
             throw new ArgumentException("Album not found.", nameof(id));
         album.BackGroundFill = fill;
         album.UpdatedUtc = DateTime.UtcNow;
 
-        Update(album);
+        await db.SaveChangesAsync(ct);
     }
+
     public static string FormatShareSlug(string value)
     {
         var source = value.Trim();
@@ -290,15 +388,15 @@ public sealed class AlbumCatalog : IDisposable
         }
     }
 
-    private void NormalizeLegacyAnalysis(AlbumPhoto photo)
+    private static bool NormalizeLegacyAnalysis(AlbumPhoto photo)
     {
         if (photo.Tags.Count > 0 || string.IsNullOrWhiteSpace(photo.Description))
-            return;
+            return false;
 
         var start = photo.Description.IndexOf('{');
         var end = photo.Description.LastIndexOf('}');
         if (start < 0 || end <= start)
-            return;
+            return false;
 
         try
         {
@@ -307,7 +405,7 @@ public sealed class AlbumCatalog : IDisposable
             if (!root.TryGetProperty("description", out var descriptionElement) ||
                 !root.TryGetProperty("tags", out var tagsElement) ||
                 tagsElement.ValueKind != System.Text.Json.JsonValueKind.Array)
-                return;
+                return false;
 
             photo.Description = descriptionElement.GetString() ?? string.Empty;
             photo.Tags = tagsElement.EnumerateArray()
@@ -316,11 +414,12 @@ public sealed class AlbumCatalog : IDisposable
                 .Cast<string>()
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            _photos.Update(photo);
+            return true;
         }
         catch (System.Text.Json.JsonException)
         {
             // Leave malformed legacy analysis untouched for manual re-indexing.
+            return false;
         }
     }
 }

@@ -2,6 +2,7 @@
 {
     public class RouteLeg
     {
+        public string Id { get; set; } = Guid.NewGuid().ToString("N");
         public RoutePoint From { get; set; } = new();
         public RoutePoint To { get; set; } = new();
         public TransportType Transport { get; set; }

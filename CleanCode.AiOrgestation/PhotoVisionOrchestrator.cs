@@ -32,7 +32,7 @@ public sealed class PhotoVisionOrchestrator
         await foreach (var file in _fileIndexer.EnumerateAsync(ct))
         {
             ct.ThrowIfCancellationRequested();
-            var existing = _catalog.FindByPath(file.Path);
+            var existing = await _catalog.FindByPathAsync(file.Path, ct);
             if (existing is not null &&
                 existing.ModifiedUtc == file.ModifiedUtc &&
                 existing.Size == file.Size &&
@@ -49,7 +49,7 @@ public sealed class PhotoVisionOrchestrator
                     "Describe this image. Return only JSON with a concise description and an array of useful lowercase tags.",
                     ct);
 
-                _catalog.Upsert(new PhotoTagRecord
+                await _catalog.UpsertAsync(new PhotoTagRecord
                 {
                     Path = file.Path,
                     Description = analysis.Description,
@@ -57,7 +57,7 @@ public sealed class PhotoVisionOrchestrator
                     Size = file.Size,
                     ModifiedUtc = file.ModifiedUtc,
                     IndexedUtc = DateTime.UtcNow,
-                });
+                }, ct);
                 indexed++;
             }
             catch when (!ct.IsCancellationRequested)
@@ -79,7 +79,7 @@ public sealed class PhotoVisionOrchestrator
         var skipped = 0;
         var failed = 0;
 
-        foreach (var photo in catalog.ListPhotos(albumId))
+        foreach (var photo in await catalog.ListPhotosAsync(albumId, ct))
         {
             ct.ThrowIfCancellationRequested();
             if (PhotoType.IsVideo(photo))
@@ -106,7 +106,7 @@ public sealed class PhotoVisionOrchestrator
         }
 
         if (indexed > 0)
-            catalog.Touch(albumId);
+            await catalog.TouchAsync(albumId, ct);
 
         return new AlbumPhotoIndexResult(indexed, skipped, failed);
     }
@@ -132,7 +132,7 @@ public sealed class PhotoVisionOrchestrator
         photo.Description = analysis.Description;
         photo.Tags = analysis.Tags.ToList();
         photo.IndexedUtc = DateTime.UtcNow;
-        catalog.UpdatePhoto(photo);
-        catalog.Touch(photo.AlbumId);
+        await catalog.UpdatePhotoAsync(photo, ct);
+        await catalog.TouchAsync(photo.AlbumId, ct);
     }
 }

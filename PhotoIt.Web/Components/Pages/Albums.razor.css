@@ -1,0 +1,73 @@
+.album-card {
+    transition: all 0.2s ease;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+    .album-card:hover {
+        background-color: honeydew;
+        border: 0.15rem solid black;
+    }
+
+    .album-cover-frame {
+        transform: translateY(-4px);
+        box-shadow: 0 .75rem 1.5rem rgba(0,0,0,.15);
+        height: 220px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: #f1f3f5;
+    }
+
+.album-cover-frame .card-img-top {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.album-cover-frame .album-cover-portrait {
+    width: auto;
+    max-width: 100%;
+}
+
+.cover-photo-picker summary {
+    color: #0d6efd;
+    cursor: pointer;
+    font-size: .9rem;
+    font-weight: 600;
+}
+
+.cover-photo-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+    gap: .5rem;
+    max-height: 15rem;
+    overflow-y: auto;
+    margin: .75rem 0;
+}
+
+.cover-photo-option {
+    overflow: hidden;
+    aspect-ratio: 1;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: .4rem;
+    background: #e9ecef;
+    cursor: pointer;
+}
+
+.cover-photo-option.selected {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 2px rgb(13 110 253 / 18%);
+}
+
+.cover-photo-option:disabled {
+    cursor: wait;
+}
+
+.cover-photo-option img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
