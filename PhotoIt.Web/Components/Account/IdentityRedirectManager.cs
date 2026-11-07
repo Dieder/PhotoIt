@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Identity;
 using PhotoIt.Web.Data;
+using System.Diagnostics;
 
 namespace PhotoIt.Web.Components.Account;
 
@@ -16,6 +17,7 @@ internal sealed class IdentityRedirectManager(NavigationManager navigationManage
         MaxAge = TimeSpan.FromSeconds(5),
     };
 
+    [DebuggerStepThrough]
     public void RedirectTo(string? uri)
     {
         uri ??= "";
@@ -27,6 +29,7 @@ internal sealed class IdentityRedirectManager(NavigationManager navigationManage
         }
 
         navigationManager.NavigateTo(uri);
+       
     }
 
     public void RedirectTo(string uri, Dictionary<string, object?> queryParameters)

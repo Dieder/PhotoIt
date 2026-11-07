@@ -52,7 +52,7 @@ else
 
                         <div class="album-cover-frame">
                             <img class="card-img-top @(IsPortraitCover(album.Id) ? "album-cover-portrait" : "")"
-                                 src="albums/@album.Id/photos/@coverPhotoId/content"
+                                 src="@GetThumbnailUrl(album.Id, coverPhotoId)"
                                  alt="Cover for @album.Name"
                                  style="height: 220px; object-fit: @(IsPortraitCover(album.Id) ? "contain" : "cover");" />
                         </div>
@@ -151,6 +151,8 @@ else
     private string? copiedAlbumId;
     private string? savingCoverAlbumId;
     private string? uploadingCoverAlbumId;
+
+    private string GetThumbnailUrl(string albumId, string photoId) => $"/albums/{albumId}/photos/{photoId}/thumbnail";
 
     protected override async Task OnInitializedAsync()
     {

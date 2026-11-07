@@ -204,6 +204,7 @@ else
                     <span class="album-photo-search-no-cover">No cover photo</span>
                 }
                 </div>
+               
                 <a class="album-photo-search-label" href="/albums/@album.Id/photos" aria-label="Search photos in @album.Name">
                     <i class="bi bi-search" aria-hidden="true"></i>
                     Search photos
@@ -247,7 +248,29 @@ else
                 </details>
             }
 
-            <hr class="album-divider" />
+             <section class="album-meta-section">
+             @foreach (var field in SelectedAlbumType.AlbumFields)
+                {                                       
+                    var fieldValue = @GetMetadataValue(field.Id);
+                   
+                    @if (!string.IsNullOrWhiteSpace(fieldValue))
+                    {
+                         <div class="row album-meta-row"> 
+                            <div class="col-12 col-md-6" @key="field.Id">
+                                <label class="meta-label">@field.Label</label>:
+                                <label class="meta-value" id="@($"album-metadata-{field.Id}")">@fieldValue</label>
+
+                                @if (!string.IsNullOrWhiteSpace(field.Unit))
+                                {
+                                    <span class="form-text">@field.Unit</span>
+                                }
+                            </div>
+                         </div>
+                    }                  
+
+                }
+            </section>
+            
 
             <!-- Metadata -->
             <div class="row g-3 album-meta">
@@ -378,6 +401,11 @@ else
             isLoading = false;
         }
     }
+
+     private AlbumTypeDefinition SelectedAlbumType => AlbumTypeCatalog.Get(album.AlbumType);
+
+     private string GetMetadataValue(string fieldId) =>
+        AlbumTypeCatalog.GetValue(album.Metadata, album.AlbumType, fieldId) ?? string.Empty;
 
     private async Task SetCoverPhotoAsync(string photoId)
     {

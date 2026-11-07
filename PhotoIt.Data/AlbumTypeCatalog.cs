@@ -1,28 +1,5 @@
 namespace PhotoIt.Data;
 
-public enum AlbumMetadataValueType
-{
-    Text,
-    Date,
-    Integer
-}
-
-public sealed record AlbumMetadataFieldDefinition(
-    string Id,
-    string Label,
-    AlbumMetadataValueType ValueType = AlbumMetadataValueType.Text,
-    string? Unit = null,
-    bool ShowOnCover = false);
-
-public sealed record AlbumTypeDefinition(
-    string Id,
-    string Name,
-    string Icon,
-    string Description,
-    string PresentationHint,
-    IReadOnlyList<AlbumMetadataFieldDefinition> AlbumFields,
-    IReadOnlyList<AlbumMetadataFieldDefinition> ChapterFields);
-
 public static class AlbumTypeCatalog
 {
     private static AlbumMetadataFieldDefinition Text(string id, string label, bool summary = false) =>

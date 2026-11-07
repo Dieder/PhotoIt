@@ -7,7 +7,7 @@
 
 .album-card {
     border: 0.15rem solid blue !important;
-    background-color: aliceblue;
+    background-color: honeydew;
     margin-top: 3rem;
     border-radius: 1rem;
 }
@@ -57,6 +57,9 @@
         border-color: #dc3545;
     }
 
+.meta-item {
+    padding-top: 0.15rem;
+}
 .meta-value {
     color: #343a40;
     font-weight: 500;
@@ -85,7 +88,7 @@
 }
 
 .album-cover-actions {
-    width: min(100%, 24rem);
+    
     display: flex;
     align-items: center;
     gap: 1rem;
@@ -95,7 +98,7 @@
 .album-cover-preview {
     position: relative;
     width: 100%;
-    min-height: 12rem;
+    min-height: 24rem;
     flex: 1 1 auto;
     overflow: hidden;
     display: grid;
@@ -281,4 +284,20 @@
 .album-delete-actions {
     justify-content: flex-end;
     margin-top: 1.25rem;
+}
+
+.album-meta-section {
+    border-top: 0.15rem solid blue;
+    border-radius: 0.1rem;
+}
+
+.album-meta-row {
+    display: flex;    
+    margin: 0.10rem;
+    border-bottom: solid 0.15rem blue;
+    flex-direction: row;
+}
+
+.meta-label {
+    font-weight:800;
 }
