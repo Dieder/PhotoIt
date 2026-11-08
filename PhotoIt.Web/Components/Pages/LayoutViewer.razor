@@ -254,7 +254,7 @@ else
                 </div>
 
                 <div class="magazine-cover-content">
-                    <div class="magazine-info-grid">
+                            <div class="@(album.TripGraph.Legs.Any() ?  "magazine-info-grid-travel" : "magazine-info-grid")">
                         <section class="magazine-info-card magazine-story-card">
                             <div>
                                 <p class="magazine-eyebrow">The story</p>
