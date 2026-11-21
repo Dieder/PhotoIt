@@ -110,14 +110,14 @@ else
                         <path d="m16 16 5 5"></path>
                     </svg>
                     <input type="search"
-                           aria-label="Search filenames, descriptions, tags, and photo details"
-                           placeholder="Search filenames, descriptions, tags..."
+                           aria-label="Search filenames and photo details"
+                           placeholder="Search filenames, camera..."
                            @bind="photoSearchQuery"
                            @bind:event="oninput" />
                 </label>
                 @if (string.IsNullOrWhiteSpace(photoSearchQuery))
                 {
-                    <p class="magazine-search-hint">Search across all @photos.Count photo@(photos.Count == 1 ? "" : "s") and videos by filename, description, tags, camera, or date.</p>
+                    <p class="magazine-search-hint">Search across all @photos.Count photo@(photos.Count == 1 ? "" : "s") and videos by filename, camera, or date.</p>
                 }
                 else if (searchResults.Count == 0)
                 {
@@ -144,14 +144,6 @@ else
                                 <span class="magazine-search-result-copy">
                                     <strong>@photo.OriginalFileName</strong>
                                     <span>@AlbumCatalog.GetDisplayDate(photo).ToString("d MMM yyyy")</span>
-                                    @if (photo.Tags.Count > 0)
-                                    {
-                                        <span>@string.Join(" · ", photo.Tags)</span>
-                                    }
-                                    else if (!string.IsNullOrWhiteSpace(photo.Description))
-                                    {
-                                        <span>@photo.Description</span>
-                                    }
                                 </span>
                             </button>
                         }
@@ -409,19 +401,6 @@ else
                     }
                     <div class="magazine-photo-preview-details">
                         <span>@AlbumCatalog.GetDisplayDate(searchPreviewPhoto).ToString("d MMM yyyy")</span>
-                        @if (!string.IsNullOrWhiteSpace(searchPreviewPhoto.Description))
-                        {
-                            <p>@searchPreviewPhoto.Description</p>
-                        }
-                        @if (searchPreviewPhoto.Tags.Count > 0)
-                        {
-                            <div class="magazine-photo-preview-tags">
-                                @foreach (var tag in searchPreviewPhoto.Tags)
-                                {
-                                    <span>@tag</span>
-                                }
-                            </div>
-                        }
                     </div>
                 </section>
             </div>
@@ -626,7 +605,6 @@ else
                 var searchableText = string.Join(' ', new[]
                 {
                     photo.OriginalFileName,
-                    photo.Description,
                     photo.CameraMake,
                     photo.CameraModel,
                     photo.LensModel,
@@ -634,7 +612,7 @@ else
                     photo.Latitude?.ToString("F6"),
                     photo.Longitude?.ToString("F6"),
                     AlbumCatalog.GetDisplayDate(photo).ToString("d MMM yyyy")
-                }.Concat(photo.Tags))
+                })
                 .ToUpperInvariant();
 
                 return terms.All(term => searchableText.Contains(term, StringComparison.OrdinalIgnoreCase));

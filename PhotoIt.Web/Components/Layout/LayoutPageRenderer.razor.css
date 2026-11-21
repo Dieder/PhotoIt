@@ -284,6 +284,15 @@ article {
     padding: .5rem;
 }
 
+.slot-ai-edit {
+    position: absolute;
+    top: 4px;
+    right: 32px;
+    opacity: 0.85;
+    line-height: 1;
+    padding: 0 6px;
+}
+
 .slot-remove {
     position: absolute;
     top: 4px;

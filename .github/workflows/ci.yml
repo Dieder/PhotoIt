@@ -1,16 +1,22 @@
-name: Build and Test
+name: CI
 
 on:
   push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -27,4 +33,12 @@ jobs:
         run: dotnet build PhotoIt.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test PhotoIt.slnx --configuration Release --no-build
+        run: dotnet test PhotoIt.slnx --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/*.trx
+          if-no-files-found: ignore

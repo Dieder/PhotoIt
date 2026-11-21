@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using PhotoIt.AiOrchestration;
 using PhotoIt.Data;
 using PhotoIt.ServiceDefaults;
 using PhotoIt.Web.Components;
@@ -84,7 +83,6 @@ public static class PhotoUploadEndpoints
         AlbumCatalog catalog,
         AzurePhotoStorage storage,
         PhotoThumbnailService thumbnails,
-        PhotoIndexQueue indexQueue,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
@@ -215,8 +213,6 @@ public static class PhotoUploadEndpoints
                 }
 
                 await catalog.AddPhotoAsync(photo, ct);
-                if (!isVideo)
-                    indexQueue.Enqueue(new AlbumPhotoIndexRequest(albumId, photo.Id));
                 PhotoItTelemetry.RecordPhotoUploaded();
                 Interlocked.Increment(ref successfulUploads);
             }

@@ -3,9 +3,7 @@
   <Folder Name="/Solution Items/">
     <File Path="README.md" />
   </Folder>
-  <Project Path="AiFoundryLocal/AiFoundryLocal.csproj" />
   <Project Path="ClassLibrary.Patterns/CleanCode.Patterns.csproj" />
-  <Project Path="CleanCode.AiOrgestation/PhotoIt.AiOrchestration.csproj" />
   <Project Path="CleanCode.ApiService/CleanCode.ApiService.csproj" />
   <Project Path="PhotoIt.AppHost/PhotoIt.AppHost.csproj" />
   <Project Path="PhotoIt.Core/PhotoIt.Core.csproj" Id="0b83e873-05ed-4c48-8baf-c64f66303b77" />
