@@ -5,6 +5,12 @@
     letter-spacing: 0.02em;
 }
 
+.brand-logo {
+    border-radius: 0.65rem;
+    height: 2.25rem;
+    width: 2.25rem;
+}
+
 .brand-mark {
     align-items: center;
     background: #f2b84b;

@@ -3,11 +3,9 @@
 @using PhotoIt.Data
 @using PhotoIt.ServiceDefaults
 @using Microsoft.AspNetCore.Components.Forms
-@using PhotoIt.AiOrchestration
 @inject AlbumCatalog Catalog
 @inject AzurePhotoStorage Storage
 @inject PhotoThumbnailService Thumbnails
-@inject PhotoIndexQueue IndexQueue
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
@@ -318,7 +316,6 @@ else
             albumPhotos[album.Id] = albumPhotos.GetValueOrDefault(album.Id, [])
                 .Append(photo)
                 .ToArray();
-            IndexQueue.Enqueue(new AlbumPhotoIndexRequest(album.Id, photo.Id));
 
             var layout = await Catalog.GetLayoutAsync(album.Id) ?? new ViewableAlbumLayout
             {

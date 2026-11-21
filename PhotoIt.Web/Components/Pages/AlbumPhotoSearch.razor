@@ -1,13 +1,8 @@
 @page "/albums/{Id}/photos"
 @rendermode InteractiveServer
 @using PhotoIt.Data
-@using PhotoIt.AiOrchestration
-@using AiFoundryLocal
 @inject AlbumCatalog Catalog
 @inject AzurePhotoStorage Storage
-@inject PhotoVisionOrchestrator VisionOrchestrator
-@inject Phi3VisionModel VisionModel
-@inject PhotoIndexQueue IndexQueue
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ILogger<AlbumPhotoSearch> Logger
 
@@ -32,7 +27,7 @@ else
         <header class="album-photo-search-header">
             <p class="text-uppercase text-muted small fw-semibold mb-2">@(album.Name)</p>
             <h1>Search photos</h1>
-            <p>Find photos and videos across this album by filename, description, tags, camera, or date.</p>
+            <p>Find photos and videos across this album by filename, camera, or date.</p>
         </header>
 
         <label class="album-photo-search-field">
@@ -90,28 +85,11 @@ else
                                 {
                                     <span>@GetCameraDisplay(photo)</span>
                                 }
-                                @if (photo.Tags.Count > 0)
-                                {
-                                    <span>@string.Join(" · ", photo.Tags)</span>
-                                }
-                                else if (!string.IsNullOrWhiteSpace(photo.Description))
-                                {
-                                    <span>@photo.Description</span>
-                                }
                             </span>
                         </button>
                         @if (canEdit)
                         {
                             <div class="album-photo-search-actions">
-                                @if (VisionModel.IsLoaded && !PhotoType.IsVideo(photo))
-                                {
-                                    <button type="button"
-                                            class="album-photo-search-action"
-                                            disabled="@IsPhotoIndexing(photo)"
-                                            @onclick="() => IndexPhotoAsync(photo)">
-                                        @(IsPhotoIndexing(photo) ? "Indexing…" : "Index")
-                                    </button>
-                                }
                                 <button type="button"
                                         class="album-photo-search-action danger"
                                         @onclick="() => RequestDeleteAsync(photo)">Delete</button>
@@ -149,19 +127,6 @@ else
                 @if (!string.IsNullOrWhiteSpace(PreviewPhoto.LensModel))
                 {
                     <span>@PreviewPhoto.LensModel</span>
-                }
-                @if (!string.IsNullOrWhiteSpace(PreviewPhoto.Description))
-                {
-                    <p>@PreviewPhoto.Description</p>
-                }
-                @if (PreviewPhoto.Tags.Count > 0)
-                {
-                    <div class="album-photo-preview-tags">
-                        @foreach (var tag in PreviewPhoto.Tags)
-                        {
-                            <span>@tag</span>
-                        }
-                    </div>
                 }
             </div>
         </section>
@@ -215,8 +180,6 @@ else
     private string? errorMessage;
     private string? pendingDeletePhotoId;
     private bool isDeleting;
-    private readonly HashSet<string> indexingPhotoIds = new(StringComparer.OrdinalIgnoreCase);
-
     private List<AlbumPhoto> SearchResults
     {
         get
@@ -260,7 +223,6 @@ else
         var searchableText = string.Join(' ', new[]
         {
             photo.OriginalFileName,
-            photo.Description,
             photo.CameraMake,
             photo.CameraModel,
             photo.LensModel,
@@ -277,7 +239,7 @@ else
             photo.Latitude?.ToString("F6"),
             photo.Longitude?.ToString("F6"),
             AlbumCatalog.GetDisplayDate(photo).ToString("d MMM yyyy")
-        }.Concat(photo.Tags));
+        });
 
         return terms.All(term => searchableText.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
@@ -294,34 +256,6 @@ else
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value!.Trim());
         return string.Join(" ", camera);
-    }
-
-    private bool IsPhotoIndexing(AlbumPhoto photo) =>
-        indexingPhotoIds.Contains(photo.Id) || IndexQueue.IsPending(photo.Id);
-
-    private async Task IndexPhotoAsync(AlbumPhoto photo)
-    {
-        if (!canEdit)
-            return;
-
-        errorMessage = null;
-        indexingPhotoIds.Add(photo.Id);
-        try
-        {
-            await InvokeAsync(StateHasChanged);
-            await VisionOrchestrator.IndexPhotoAsync(photo, Catalog, Storage);
-            photos = await Catalog.ListPhotosAsync(Id);
-        }
-        catch (Exception exception)
-        {
-            Logger.LogError(exception, "Photo indexing failed. AlbumId: {AlbumId}, MediaId: {MediaId}", Id, photo.Id);
-            errorMessage = $"Tag indexing failed: {exception.Message}";
-        }
-        finally
-        {
-            indexingPhotoIds.Remove(photo.Id);
-            await InvokeAsync(StateHasChanged);
-        }
     }
 
     private async Task RequestDeleteAsync(AlbumPhoto photo)

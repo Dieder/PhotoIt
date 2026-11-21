@@ -9,7 +9,6 @@ public class AlbumWebContext(DbContextOptions<AlbumWebContext> options) : Identi
     public DbSet<Album> Albums => Set<Album>();
     public DbSet<AlbumPhoto> AlbumPhotos => Set<AlbumPhoto>();
     public DbSet<ViewableAlbumLayout> ViewableAlbumLayouts => Set<ViewableAlbumLayout>();
-    public DbSet<PhotoTagRecord> PhotoTags => Set<PhotoTagRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -57,12 +56,6 @@ public class AlbumWebContext(DbContextOptions<AlbumWebContext> options) : Identi
                     slot.OwnsOne(photoSlot => photoSlot.Type));
                 page.OwnsOne(layoutPage => layoutPage.Appearance);
             });
-        });
-
-        modelBuilder.Entity<PhotoTagRecord>(entity =>
-        {
-            entity.ToContainer("PhotoTags");
-            entity.HasPartitionKey(photo => photo.Id);
         });
 
         modelBuilder.Entity<IdentityUserPasskey<string>>(entity =>

@@ -138,19 +138,6 @@ public sealed class AlbumCatalog
             .ToListAsync(ct);
         photos = photos.OrderByDescending(photo => photo.DateTakenUtc ?? photo.UploadedUtc).ToList();
 
-        var changed = false;
-        foreach (var photo in photos)
-        {
-            if (NormalizeLegacyAnalysis(photo))
-            {
-                db.Update(photo);
-                changed = true;
-            }
-        }
-
-        if (changed)
-            await db.SaveChangesAsync(ct);
-
         return photos;
     }
 
@@ -181,8 +168,6 @@ public sealed class AlbumCatalog
         await using var db = _contextFactory.CreateDbContext();
         var photo = await db.Set<AlbumPhoto>().FirstOrDefaultAsync(photo =>
             photo.AlbumId == albumId && photo.Id == photoId, ct);
-        if (photo is not null && NormalizeLegacyAnalysis(photo))
-            await db.SaveChangesAsync(ct);
         return photo;
     }
 
@@ -385,41 +370,6 @@ public sealed class AlbumCatalog
                 else
                     slot.Zoom = Math.Clamp(slot.Zoom, 1d, 3d);
             }
-        }
-    }
-
-    private static bool NormalizeLegacyAnalysis(AlbumPhoto photo)
-    {
-        if (photo.Tags.Count > 0 || string.IsNullOrWhiteSpace(photo.Description))
-            return false;
-
-        var start = photo.Description.IndexOf('{');
-        var end = photo.Description.LastIndexOf('}');
-        if (start < 0 || end <= start)
-            return false;
-
-        try
-        {
-            using var document = System.Text.Json.JsonDocument.Parse(photo.Description[start..(end + 1)]);
-            var root = document.RootElement;
-            if (!root.TryGetProperty("description", out var descriptionElement) ||
-                !root.TryGetProperty("tags", out var tagsElement) ||
-                tagsElement.ValueKind != System.Text.Json.JsonValueKind.Array)
-                return false;
-
-            photo.Description = descriptionElement.GetString() ?? string.Empty;
-            photo.Tags = tagsElement.EnumerateArray()
-                .Select(tag => tag.GetString())
-                .Where(tag => !string.IsNullOrWhiteSpace(tag))
-                .Cast<string>()
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            return true;
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            // Leave malformed legacy analysis untouched for manual re-indexing.
-            return false;
         }
     }
 }

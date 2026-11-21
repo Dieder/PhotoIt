@@ -1,8 +1,6 @@
-using AiFoundryLocal;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using PhotoIt.AiOrchestration;
 using PhotoIt.Core.Services;
 using PhotoIt.Data;
 using PhotoIt.Web.Components;
@@ -27,7 +25,6 @@ builder.Services.AddRazorComponents()
 builder.Services.AddOutputCache();
 builder.Services.AddSingleton<IPhotoItContextFactory, AlbumWebContextFactory>();
 builder.Services.AddSingleton<AlbumCatalog>();
-builder.Services.AddSingleton<PhotoTagCatalog>();
 builder.Services.AddSingleton<PhotoThumbnailService>();
 
 builder.Services.AddHttpClient<NominatimClient>();
@@ -48,24 +45,6 @@ builder.Services.AddSingleton(_ =>
         builder.Configuration["photostorageaccountkey"]));
 });
 
-builder.Services.AddSingleton(_ =>
-{
-    var configuredPath = builder.Configuration["VisionModel:ModelDirectory"];
-    var modelDirectory = Path.IsPathRooted(configuredPath ?? string.Empty)
-        ? configuredPath!
-        : Path.GetFullPath(Path.Combine(
-            builder.Environment.ContentRootPath,
-            configuredPath ?? "..\\..\\models\\onnx_phi3_vision\\cpu_and_mobile\\cpu-int4-rtn-block-32-acc-level-4"));
-    return new Phi3VisionModel(new Phi3VisionOptions(
-        modelDirectory,
-        builder.Configuration.GetValue("VisionModel:MaxNewTokens", 128),
-        builder.Configuration.GetValue("VisionModel:ContextLength", 4096)));
-});
-builder.Services.AddSingleton<FileIndexer>(_ => new FileIndexer(
-    builder.Configuration["VisionModel:LocalPhotoDirectory"] ?? Path.Combine(builder.Environment.ContentRootPath, "photos")));
-builder.Services.AddSingleton<PhotoVisionOrchestrator>();
-builder.Services.AddSingleton<PhotoIndexQueue>();
-builder.Services.AddHostedService<PhotoIndexBackgroundService>();
 var googleClientId = builder.Configuration["Google:ClientId"];
 var googleClientSecret = builder.Configuration["Google:ClientSecret"];
 builder.Services.AddAuthentication()

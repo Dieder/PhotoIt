@@ -31,7 +31,4 @@ public sealed class AlbumPhoto
     public string? IsoSpeed { get; set; }
     public string? ExposureProgram { get; set; }
     public string? WhiteBalance { get; set; }
-    public string Description { get; set; } = string.Empty;
-    public List<string> Tags { get; set; } = [];
-    public DateTime? IndexedUtc { get; set; }
 }
