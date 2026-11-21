@@ -31,4 +31,7 @@ public sealed class AlbumPhoto
     public string? IsoSpeed { get; set; }
     public string? ExposureProgram { get; set; }
     public string? WhiteBalance { get; set; }
+    public bool IsPendingEdit { get; set; }
+    public string? EditSourcePhotoId { get; set; }
+    public string? EditOperation { get; set; }
 }

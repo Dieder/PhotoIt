@@ -32,6 +32,22 @@ param googleClientId string = ''
 @description('Google OAuth client secret.')
 param googleClientSecret string = ''
 
+@description('Base URL of the VisionEngine API used for AI photo editing. Leave empty to disable the feature.')
+param visionEngineBaseUrl string = ''
+
+@description('VisionEngine API scope, e.g. api://{api-client-id}/.default.')
+param visionEngineScope string = ''
+
+@description('Entra tenant of the app registration PhotoIt uses to call VisionEngine.')
+param visionEngineTenantId string = ''
+
+@description('Client id of the app registration PhotoIt uses to call VisionEngine.')
+param visionEngineClientId string = ''
+
+@secure()
+@description('Client secret of the app registration PhotoIt uses to call VisionEngine.')
+param visionEngineClientSecret string = ''
+
 var suffix = uniqueString(resourceGroup().id)
 var webAppName = '${appName}-web-${suffix}'
 
@@ -116,6 +132,26 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'Google__ClientSecret'
           value: googleClientSecret
+        }
+        {
+          name: 'VisionEngine__BaseUrl'
+          value: visionEngineBaseUrl
+        }
+        {
+          name: 'VisionEngine__Scope'
+          value: visionEngineScope
+        }
+        {
+          name: 'VisionEngine__TenantId'
+          value: visionEngineTenantId
+        }
+        {
+          name: 'VisionEngine__ClientId'
+          value: visionEngineClientId
+        }
+        {
+          name: 'VisionEngine__ClientSecret'
+          value: visionEngineClientSecret
         }
       ]
     }

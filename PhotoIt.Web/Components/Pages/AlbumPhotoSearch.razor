@@ -90,7 +90,11 @@ else
                         @if (canEdit)
                         {
                             <div class="album-photo-search-actions">
-                                <button type="button"
+                                @if (!PhotoType.IsVideo(photo))
+                                {
+                                    <a class="album-photo-search-action"
+                                       href="@($"/albums/{Id}/photos/{photo.Id}/edit?ret={Uri.EscapeDataString($"/albums/{Id}/photos")}")">Edit with AI</a>
+                                }                                <button type="button"
                                         class="album-photo-search-action danger"
                                         @onclick="() => RequestDeleteAsync(photo)">Delete</button>
                             </div>

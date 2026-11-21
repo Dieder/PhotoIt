@@ -57,6 +57,16 @@ The web app reads settings from `PhotoIt.Web/appsettings.json`, environment vari
 | `AzureStorage:AccountUri` | No | Blob service URI; if omitted, it is built from the account name. The account name can also be derived from this URI. |
 | `AzureStorage:ContainerName` | No | Blob container for photos. Defaults to `photos`. |
 | `photostorageaccountkey` | No | Optional root-level configuration value for a storage account key. If omitted, the app uses `DefaultAzureCredential` (for example, an Azure CLI login in development or a managed identity when deployed). Prefer identity-based access where possible. |
+| `VisionEngine:BaseUrl` | No | Base URL of the VisionEngine API. AI photo editing is disabled when `BaseUrl` or `Scope` is empty. |
+| `VisionEngine:Scope` | With `BaseUrl` | API scope, e.g. `api://{api-client-id}/.default`. |
+| `VisionEngine:TenantId`, `ClientId`, `ClientSecret` | No | App registration PhotoIt uses to call VisionEngine (client credentials). If omitted, `DefaultAzureCredential` is used (for example a managed identity). Keep the secret in user secrets or App Service settings. |
+| `VisionEngine:PollIntervalSeconds`, `TimeoutSeconds` | No | Status polling interval (default 3) and maximum wait for an edit (default 300). |
+
+### AI photo editing
+
+Album owners can open **Edit with AI** from the photo manager, photo search, or the ✨ AI button on a layout slot. The editor page shows the original on the left and the result on the right. Choose a task (hover for an explanation), enter a prompt of up to 1024 characters, optionally pick reference photos from the album, and press **Run**. The result is stored as a hidden album photo until you **Accept** (it replaces the photo in the slot you opened the editor from, or becomes a new album photo when opened outside a layout) or **Decline** (it is deleted).
+
+PhotoIt calls the VisionEngine API with an app identity. The API validates the token audience, so the app registration (or managed identity) used by PhotoIt must be granted an app role on the VisionEngine API registration so Entra issues it a token for that audience.
 Example (replace the storage account with values for your environment):
 
 ```json

@@ -434,6 +434,7 @@ else
                                 OnPhotoDragStarted="HandleDragStarted"
                                 OnPhotoDropped="HandleDropped"
                                 OnPhotoRemoved="HandleRemoved"
+                                OnPhotoEditRequested="HandleEditRequestedAsync"
                                 OnZoomChanged="HandleZoomChanged"
                                 OnPositionChanged="HandlePositionChanged" />
         </div>
@@ -1009,6 +1010,24 @@ else
         draggedFromSlotRow = null;
         draggedFromTitlePage = false;
         draggedFromPageNumber = null;
+    }
+
+    private async Task HandleEditRequestedAsync(LayoutEditRequestedEventArgs args)
+    {
+        if (album is null || selectedPage is null)
+            return;
+
+        var slotIndex = selectedPage.Photos.FindIndex(slot => slot.Col == args.slotCol && slot.Row == args.slotRow);
+        if (slotIndex < 0)
+            return;
+
+        // The editor swaps the slot in the stored layout, so unsaved changes must be persisted first.
+        await SaveAsync();
+        if (!layoutSaved || errorMessage is not null)
+            return;
+
+        var returnUrl = Uri.EscapeDataString($"/albums/{album.Id}/layout/edit");
+        Navigation.NavigateTo($"/albums/{album.Id}/photos/{args.PhotoId}/edit?page={selectedPage.Number}&slot={slotIndex}&ret={returnUrl}");
     }
 
     private async Task SaveAsync()

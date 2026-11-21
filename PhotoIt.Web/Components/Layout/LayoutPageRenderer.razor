@@ -127,6 +127,15 @@
 
                             @if (Editable)
                             {
+                                @if (!isVideo && OnPhotoEditRequested.HasDelegate)
+                                {
+                                    <button type="button"
+                                            class="slot-ai-edit btn btn-sm btn-dark"
+                                            title="Edit this photo with AI"
+                                            @onclick="() => OnPhotoEditRequested.InvokeAsync(new LayoutEditRequestedEventArgs(slot.Col, slot.Row, photoId!))"
+                                            @onpointerdown:stopPropagation="true"
+                                            @onclick:stopPropagation="true">✨ AI</button>
+                                }
                                 <button type="button"
                                         class="slot-remove btn btn-sm btn-dark"
                                         @onclick="() => HandleSlotRemove(slot.Col, slot.Row)"
@@ -194,6 +203,9 @@
 
     [Parameter]
     public EventCallback<LayoutRemoveEventArgs> OnPhotoRemoved { get; set; }
+
+    [Parameter]
+    public EventCallback<LayoutEditRequestedEventArgs> OnPhotoEditRequested { get; set; }
 
     [Parameter]
     public EventCallback<LayoutZoomChangedEventArgs> OnZoomChanged { get; set; }

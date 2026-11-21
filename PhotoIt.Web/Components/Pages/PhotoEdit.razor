@@ -1,0 +1,360 @@
+@page "/albums/{AlbumId}/photos/{PhotoId}/edit"
+@rendermode InteractiveServer
+@implements IDisposable
+@using PhotoIt.Data
+@using PhotoIt.Web.VisionEngine
+@inject AlbumCatalog Catalog
+@inject PhotoEditService EditService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<PhotoEdit> Logger
+
+<PageTitle>Edit photo with AI</PageTitle>
+
+@if (isLoading)
+{
+    <div class="d-flex justify-content-center py-5" role="status">
+        <span class="spinner-border text-primary" aria-hidden="true"></span>
+        <span class="visually-hidden">Loading photo...</span>
+    </div>
+}
+else if (album is null || original is null || !canEdit)
+{
+    <div class="alert alert-warning">This photo could not be found, or you are not allowed to edit it.</div>
+    <a href="/albums">Back to albums</a>
+}
+else
+{
+    <div class="photo-edit-modal" role="dialog" aria-modal="true" aria-labelledby="photo-edit-title">
+        <header class="photo-edit-header">
+            <h1 id="photo-edit-title" class="h4 mb-0">Edit photo with AI</h1>
+            <a class="btn-close" href="@BackUrl" aria-label="Close" @onclick="CloseAsync" @onclick:preventDefault></a>
+        </header>
+
+        @if (!EditService.IsConfigured)
+        {
+            <div class="alert alert-warning m-3 mb-0">AI photo editing is not configured for this environment.</div>
+        }
+
+        <div class="photo-edit-body">
+            <section class="photo-edit-pane" aria-label="Original photo">
+                <h2 class="h6">Original</h2>
+                <div class="photo-edit-preview">
+                    <img src="@ContentUrl(original.Id)" alt="@original.OriginalFileName" />
+                </div>
+
+                <fieldset class="mt-3" disabled="@isRunning">
+                    <legend class="h6">Task</legend>
+                    <div class="photo-edit-operations" role="radiogroup" aria-label="Task">
+                        @foreach (var operation in PhotoEditOperations.All)
+                        {
+                            var selected = operation.Operation == selectedOperation;
+                            <button type="button"
+                                    class="btn btn-sm @(selected ? "btn-primary" : "btn-outline-secondary")"
+                                    role="radio"
+                                    aria-checked="@selected"
+                                    title="@operation.Description"
+                                    @onclick="() => selectedOperation = operation.Operation">
+                                @operation.Name
+                            </button>
+                        }
+                    </div>
+                    <p class="form-text mb-2">@selectedDefinition.Description</p>
+
+                    <label class="form-label" for="photo-edit-prompt">Prompt</label>
+                    <textarea id="photo-edit-prompt"
+                              class="form-control"
+                              rows="4"
+                              maxlength="@PhotoEditRules.MaxPromptLength"
+                              placeholder="Describe what the AI should do"
+                              @bind="prompt"
+                              @bind:event="oninput"></textarea>
+                    <div class="form-text text-end">@(prompt?.Length ?? 0) / @PhotoEditRules.MaxPromptLength</div>
+
+                    @if (references.Count > 0)
+                    {
+                        <div class="mt-2">
+                            <span class="form-label d-block">
+                                Reference photos
+                                <span class="text-muted small" title="The AI uses the selected photos as extra input, for example to take a person or style from them.">(optional)</span>
+                            </span>
+                            <div class="photo-edit-references">
+                                @foreach (var reference in references)
+                                {
+                                    var isSelected = selectedReferenceIds.Contains(reference.Id);
+                                    <label class="photo-edit-reference @(isSelected ? "selected" : "")" title="@reference.OriginalFileName">
+                                        <input type="checkbox"
+                                               checked="@isSelected"
+                                               @onchange="args => ToggleReference(reference.Id, args)" />
+                                        <img src="@ThumbnailUrl(reference.Id)" alt="@reference.OriginalFileName" loading="lazy" />
+                                    </label>
+                                }
+                            </div>
+                            <div class="form-text">Up to @PhotoEditRules.MaxReferencePhotos photos. @selectedReferenceIds.Count selected.</div>
+                        </div>
+                    }
+                </fieldset>
+
+                @if (!string.IsNullOrWhiteSpace(error))
+                {
+                    <div class="alert alert-danger mt-3" role="alert">@error</div>
+                }
+
+                <div class="mt-3 d-flex gap-2 align-items-center">
+                    <button type="button" class="btn btn-primary" disabled="@(isRunning || !EditService.IsConfigured)" @onclick="RunAsync">
+                        @if (isRunning)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                        }
+                        Run
+                    </button>
+                    @if (isRunning)
+                    {
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CancelRun">Cancel</button>
+                        <span class="text-muted" role="status" aria-live="polite">@status</span>
+                    }
+                </div>
+            </section>
+
+            <section class="photo-edit-pane" aria-label="Result">
+                <h2 class="h6">Result</h2>
+                <div class="photo-edit-preview">
+                    @if (pending is not null)
+                    {
+                        <img src="@ContentUrl(pending.Id)" alt="AI result" />
+                    }
+                    else
+                    {
+                        <span class="text-muted">@(isRunning ? status : "The result appears here after you run a task.")</span>
+                    }
+                </div>
+                @if (pending is not null)
+                {
+                    <div class="mt-3 d-flex gap-2">
+                        <button type="button" class="btn btn-success" disabled="@isBusy" @onclick="AcceptAsync">Accept</button>
+                        <button type="button" class="btn btn-outline-danger" disabled="@isBusy" @onclick="DeclineAsync">Decline</button>
+                    </div>
+                    <p class="form-text">
+                        @if (HasSlot)
+                        {
+                            <text>Accepting replaces this photo in the page slot you opened it from.</text>
+                        }
+                        else
+                        {
+                            <text>Accepting keeps the result as a new photo in the album.</text>
+                        }
+                        Declining removes the result.
+                    </p>
+                }
+            </section>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string AlbumId { get; set; } = string.Empty;
+    [Parameter] public string PhotoId { get; set; } = string.Empty;
+
+    [SupplyParameterFromQuery(Name = "page")] public int? PageNumber { get; set; }
+    [SupplyParameterFromQuery(Name = "slot")] public int? SlotIndex { get; set; }
+    [SupplyParameterFromQuery(Name = "ret")] public string? ReturnUrl { get; set; }
+
+    private Album? album;
+    private AlbumPhoto? original;
+    private AlbumPhoto? pending;
+    private List<AlbumPhoto> references = [];
+    private readonly HashSet<string> selectedReferenceIds = new(StringComparer.OrdinalIgnoreCase);
+    private ImageTaskOperation selectedOperation = ImageTaskOperation.ImproveQuality;
+    private string? prompt;
+    private string? error;
+    private string status = string.Empty;
+    private string userId = string.Empty;
+    private bool isLoading = true;
+    private bool canEdit;
+    private bool isRunning;
+    private bool isBusy;
+    private CancellationTokenSource? runCts;
+
+    private bool HasSlot => PageNumber is not null && SlotIndex is not null;
+    private PhotoEditOperation selectedDefinition => PhotoEditOperations.Find(selectedOperation) ?? PhotoEditOperations.All[0];
+
+    private string BackUrl
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//") && !ReturnUrl.Contains('\\'))
+                return ReturnUrl;
+
+            return HasSlot ? $"/albums/{AlbumId}/layout/edit" : $"/albums/{AlbumId}/photos";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            album = await Catalog.GetAsync(AlbumId);
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            userId = CurrentUserHelper.GetUserId(authState.User) ?? string.Empty;
+            canEdit = album is not null && string.Equals(album.UserId, userId, StringComparison.Ordinal);
+            if (!canEdit)
+                return;
+
+            original = await Catalog.GetPhotoAsync(AlbumId, PhotoId);
+            if (original is null || original.IsPendingEdit || PhotoType.IsVideo(original))
+            {
+                original = null;
+                return;
+            }
+
+            references = (await Catalog.ListPhotosAsync(AlbumId))
+                .Where(photo => photo.Id != original.Id && !PhotoType.IsVideo(photo))
+                .ToList();
+            pending = (await Catalog.ListPendingEditsAsync(AlbumId, original.Id))
+                .OrderByDescending(photo => photo.UploadedUtc)
+                .FirstOrDefault();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string ContentUrl(string photoId) => $"/albums/{AlbumId}/photos/{photoId}/content";
+    private string ThumbnailUrl(string photoId) => $"/albums/{AlbumId}/photos/{photoId}/thumbnail";
+
+    private void ToggleReference(string photoId, ChangeEventArgs args)
+    {
+        if (args.Value is true)
+        {
+            if (selectedReferenceIds.Count < PhotoEditRules.MaxReferencePhotos)
+                selectedReferenceIds.Add(photoId);
+        }
+        else
+        {
+            selectedReferenceIds.Remove(photoId);
+        }
+    }
+
+    private async Task RunAsync()
+    {
+        if (original is null || isRunning)
+            return;
+
+        error = null;
+        var promptError = PhotoEditRules.ValidatePrompt(prompt);
+        if (promptError is not null)
+        {
+            error = promptError;
+            return;
+        }
+
+        runCts = new CancellationTokenSource();
+        isRunning = true;
+        status = "Starting…";
+        try
+        {
+            if (pending is not null)
+            {
+                await EditService.DiscardAsync(AlbumId, pending.Id);
+                pending = null;
+            }
+
+            pending = await EditService.RunAsync(
+                userId,
+                AlbumId,
+                original.Id,
+                selectedOperation,
+                prompt!,
+                selectedReferenceIds.ToList(),
+                message => _ = InvokeAsync(() =>
+                {
+                    status = message;
+                    StateHasChanged();
+                }),
+                runCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            error = "The task was cancelled.";
+        }
+        catch (PhotoEditException exception)
+        {
+            error = exception.Message;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "AI edit failed. AlbumId: {AlbumId}, PhotoId: {PhotoId}", AlbumId, PhotoId);
+            error = "Something went wrong while editing the photo. Please try again.";
+        }
+        finally
+        {
+            isRunning = false;
+            runCts?.Dispose();
+            runCts = null;
+        }
+    }
+
+    private void CancelRun() => runCts?.Cancel();
+
+    private async Task AcceptAsync()
+    {
+        if (pending is null || isBusy)
+            return;
+
+        isBusy = true;
+        error = null;
+        try
+        {
+            var accepted = await Catalog.AcceptEditAsync(
+                AlbumId,
+                pending.Id,
+                HasSlot ? PageNumber : null,
+                HasSlot ? SlotIndex : null);
+            if (!accepted)
+            {
+                error = "The result could not be applied. The slot may have changed since you opened the editor.";
+                return;
+            }
+
+            Navigation.NavigateTo(BackUrl);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Accepting AI edit failed. AlbumId: {AlbumId}, PhotoId: {PhotoId}", AlbumId, PhotoId);
+            error = exception is InvalidOperationException ? exception.Message : "The result could not be applied.";
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task DeclineAsync()
+    {
+        if (pending is null || isBusy)
+            return;
+
+        isBusy = true;
+        try
+        {
+            await EditService.DiscardAsync(AlbumId, pending.Id);
+            pending = null;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private Task CloseAsync()
+    {
+        Navigation.NavigateTo(BackUrl);
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        runCts?.Cancel();
+    }
+}

@@ -245,6 +245,10 @@ else
                                              alt="@photo.OriginalFileName"
                                              loading="lazy" />
                                     }
+                                    @if (!isVideo)
+                                    {
+                                        <a class="chapter-photo-filename" href="@($"/albums/{album.Id}/photos/{photo.Id}/edit?ret={Uri.EscapeDataString($"/albums/{album.Id}/photos/manage")}")">Edit with AI</a>
+                                    }
                                     @if (isSelected)
                                     {
                                         <span class="chapter-photo-filename" title="@photo.OriginalFileName">@photo.OriginalFileName</span>

@@ -28,6 +28,10 @@ builder.Services.AddSingleton<AlbumCatalog>();
 builder.Services.AddSingleton<PhotoThumbnailService>();
 
 builder.Services.AddHttpClient<NominatimClient>();
+builder.Services.Configure<PhotoIt.Web.VisionEngine.VisionEngineOptions>(
+    builder.Configuration.GetSection(PhotoIt.Web.VisionEngine.VisionEngineOptions.SectionName));
+builder.Services.AddHttpClient<PhotoIt.Web.VisionEngine.VisionEngineClient>(client => client.Timeout = TimeSpan.FromMinutes(5));
+builder.Services.AddScoped<PhotoIt.Web.VisionEngine.PhotoEditService>();
 
 builder.Services.AddSingleton(_ =>
 {

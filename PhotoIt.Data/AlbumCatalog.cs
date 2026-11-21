@@ -133,12 +133,66 @@ public sealed class AlbumCatalog
 
     public async Task<IReadOnlyList<AlbumPhoto>> ListPhotosAsync(string albumId, CancellationToken ct = default)
     {
+        var photos = await ListAllPhotosAsync(albumId, ct);
+        return photos.Where(photo => !photo.IsPendingEdit).ToList();
+    }
+
+    public async Task<IReadOnlyList<AlbumPhoto>> ListPendingEditsAsync(string albumId, string? sourcePhotoId = null, CancellationToken ct = default)
+    {
+        var photos = await ListAllPhotosAsync(albumId, ct);
+        return photos
+            .Where(photo => photo.IsPendingEdit
+                && (sourcePhotoId is null
+                    || string.Equals(photo.EditSourcePhotoId, sourcePhotoId, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Accepts a pending edit. When a slot is given, only that slot is switched from the original photo to the result;
+    /// otherwise the result simply becomes a normal album photo.
+    /// </summary>
+    public async Task<bool> AcceptEditAsync(
+        string albumId,
+        string pendingPhotoId,
+        int? pageNumber = null,
+        int? slotIndex = null,
+        CancellationToken ct = default)
+    {
+        var pending = await GetPhotoAsync(albumId, pendingPhotoId, ct);
+        if (pending is null || !pending.IsPendingEdit || string.IsNullOrWhiteSpace(pending.EditSourcePhotoId))
+            return false;
+
+        if (pageNumber is not null && slotIndex is not null)
+        {
+            var album = await GetAsync(albumId, ct);
+            var layout = await GetLayoutAsync(albumId, ct);
+            if (album is null || layout is null
+                || !PhotoEditRules.TryReplaceSlot(album, layout, pageNumber.Value, slotIndex.Value, pending.EditSourcePhotoId, pending.Id))
+                return false;
+
+            await UpdateAsync(album, ct);
+            await SaveLayoutAsync(layout, ct);
+        }
+
+        pending.IsPendingEdit = false;
+        return await UpdatePhotoAsync(pending, ct);
+    }
+
+    public async Task<bool> DeclineEditAsync(string albumId, string pendingPhotoId, CancellationToken ct = default)
+    {
+        var pending = await GetPhotoAsync(albumId, pendingPhotoId, ct);
+        if (pending is null || !pending.IsPendingEdit)
+            return false;
+
+        return await DeletePhotoAsync(pending.Id, ct);
+    }
+
+    private async Task<List<AlbumPhoto>> ListAllPhotosAsync(string albumId, CancellationToken ct)
+    {
         await using var db = _contextFactory.CreateDbContext();
         var photos = await db.Set<AlbumPhoto>().Where(photo => photo.AlbumId == albumId)
             .ToListAsync(ct);
-        photos = photos.OrderByDescending(photo => photo.DateTakenUtc ?? photo.UploadedUtc).ToList();
-
-        return photos;
+        return photos.OrderByDescending(photo => photo.DateTakenUtc ?? photo.UploadedUtc).ToList();
     }
 
     public static DateTime GetDisplayDate(AlbumPhoto photo)
