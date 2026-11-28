@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 20
     environment:
       name: Production
-      url: ${{ steps.deploy.outputs.webapp-url }}
+      url: ${{ steps.provision.outputs.webAppUrl }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -45,16 +45,42 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # Creates or updates the App Service, App Insights and storage role assignment (idempotent).
+      - name: Provision infrastructure
+        id: provision
+        env:
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE__CLIENT_SECRET }}
+          VISIONENGINE_CLIENT_SECRET: ${{ secrets.VISIONENGINE__CLIENTSECRET }}
+          VISIONENGINE_BASE_URL: ${{ secrets.VISIONENGINE__BASEURL }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE__CLIENT_ID }}
+          VISIONENGINE_SCOPE: ${{ vars.VISIONENGINE__SCOPE }}
+          VISIONENGINE_TENANT_ID: ${{ vars.VISIONENGINE__TENANTID }}
+          VISIONENGINE_CLIENT_ID: ${{ vars.VISIONENGINE__CLIENTID }}
+        run: |
+          outputs=$(az deployment group create \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --template-file infra/main.bicep \
+            --parameters \
+              googleClientId="$GOOGLE_CLIENT_ID" \
+              googleClientSecret="$GOOGLE_CLIENT_SECRET" \
+              visionEngineBaseUrl="$VISIONENGINE_BASE_URL" \
+              visionEngineScope="$VISIONENGINE_SCOPE" \
+              visionEngineTenantId="$VISIONENGINE_TENANT_ID" \
+              visionEngineClientId="$VISIONENGINE_CLIENT_ID" \
+              visionEngineClientSecret="$VISIONENGINE_CLIENT_SECRET" \
+            --query properties.outputs -o json)
+          echo "webAppName=$(echo "$outputs" | jq -r .webAppName.value)" >> "$GITHUB_OUTPUT"
+          echo "webAppUrl=$(echo "$outputs" | jq -r .webAppUrl.value)" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to App Service
-        id: deploy
         uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          app-name: ${{ steps.provision.outputs.webAppName }}
           package: ./publish
 
       - name: Smoke test
         run: |
-          url="${{ steps.deploy.outputs.webapp-url }}/health"
+          url="${{ steps.provision.outputs.webAppUrl }}/health"
           for i in 1 2 3 4 5 6; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
             echo "Attempt $i: HTTP $code"
