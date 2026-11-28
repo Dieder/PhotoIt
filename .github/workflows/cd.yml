@@ -49,6 +49,8 @@ jobs:
       - name: Provision infrastructure
         id: provision
         env:
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_APP_SERVICE_SKU: ${{ vars.AZURE_APP_SERVICE_SKU }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE__CLIENT_SECRET }}
           VISIONENGINE_CLIENT_SECRET: ${{ secrets.VISIONENGINE__CLIENTSECRET }}
           VISIONENGINE_BASE_URL: ${{ secrets.VISIONENGINE__BASEURL }}
@@ -57,10 +59,14 @@ jobs:
           VISIONENGINE_TENANT_ID: ${{ vars.VISIONENGINE__TENANTID }}
           VISIONENGINE_CLIENT_ID: ${{ vars.VISIONENGINE__CLIENTID }}
         run: |
+          extra=()
+          [ -n "$AZURE_LOCATION" ] && extra+=(location="$AZURE_LOCATION")
+          [ -n "$AZURE_APP_SERVICE_SKU" ] && extra+=(appServiceSkuName="$AZURE_APP_SERVICE_SKU")
           outputs=$(az deployment group create \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --template-file infra/main.bicep \
             --parameters \
+              "${extra[@]}" \
               googleClientId="$GOOGLE_CLIENT_ID" \
               googleClientSecret="$GOOGLE_CLIENT_SECRET" \
               visionEngineBaseUrl="$VISIONENGINE_BASE_URL" \
