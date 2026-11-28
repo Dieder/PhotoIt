@@ -50,8 +50,9 @@ jobs:
         id: provision
         env:
           AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
-          AZURE_APP_SERVICE_SKU: ${{ vars.AZURE_APP_SERVICE_SKU }}: ${{ secrets.GOOGLE__CLIENT_SECRET }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE__CLIENT_SECRET }}: ${{ secrets.GOOGLE__CLIENT_SECRET }}          VISIONENGINE_CLIENT_SECRET: ${{ secrets.VISIONENGINE__CLIENTSECRET }}
+          AZURE_APP_SERVICE_SKU: ${{ vars.AZURE_APP_SERVICE_SKU }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE__CLIENT_SECRET }}
+          VISIONENGINE_CLIENT_SECRET: ${{ secrets.VISIONENGINE__CLIENTSECRET }}
           VISIONENGINE_BASE_URL: ${{ secrets.VISIONENGINE__BASEURL }}
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE__CLIENT_ID }}
           VISIONENGINE_SCOPE: ${{ vars.VISIONENGINE__SCOPE }}
